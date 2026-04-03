@@ -1,0 +1,15 @@
+{
+  "basic": {
+    "symbol": "BTCUSDT",
+    "interval": "5m",
+    "quantity": 0.001,
+    "risk_per_trade": 0.01
+  },
+  "risk_management": {
+    "max_positions": 3,
+    "stop_loss_percent": 2.0,
+    "take_profit_percent": 4.0,
+    "trailing_stop": true,
+    "trailing_stop_percent": 1.0
+  }
+}
