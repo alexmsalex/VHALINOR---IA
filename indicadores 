@@ -1,0 +1,2 @@
+# Exemplo: RSI mais sensível
+df['rsi'] = ta.momentum.RSIIndicator(df['close'], window=7).rsi()
