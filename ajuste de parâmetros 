@@ -1,0 +1,4 @@
+SYMBOL = "BTCUSDT"      # Par de trading
+INTERVAL = "1m"         # Intervalo dos candles
+QUANTIDADE = 0.001      # Quantidade por trade (BTC)
+RISK_PER_TRADE = 0.01   # 1% do capital por operação
