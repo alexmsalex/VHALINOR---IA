@@ -1,0 +1,3 @@
+vhalinor = Vhalinor()
+vhalinor.curiosidade = 0.9  # Mais propenso a arriscar
+vhalinor.energia = 80.0     # Menos energia = menos trades
