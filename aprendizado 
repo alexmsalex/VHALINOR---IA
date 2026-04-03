@@ -1,0 +1,406 @@
+"""
+Módulo de Aprendizado Avançado - VHALINOR.IAG 5.0
+=================================================
+Sistemas de aprendizado contínuo e evolucional para rede neural artificial.
+
+Este módulo implementa:
+- Aprendizado Contínuo: Adaptação em tempo real baseada em fluxo de dados
+- Aprendizado Evolucional: Otimização através de algoritmos genéticos e neuroevolução
+
+Versão: 2.0.0
+Autor: Sistema VHALINOR
+Data: Fevereiro 2026
+"""
+
+import sys
+import logging
+from pathlib import Path
+from typing import Optional, Dict, Any, List, Union
+import importlib.util
+
+# Configuração de logging específica para o módulo
+_logger = logging.getLogger(__name__)
+_logger.setLevel(logging.INFO)
+
+# Handler para o logger se não existir
+if not _logger.handlers:
+    handler = logging.StreamHandler()
+    handler.setFormatter(logging.Formatter(
+        '%(asctime)s | %(name)-20s | %(levelname)-7s | %(message)s',
+        datefmt='%H:%M:%S'
+    ))
+    _logger.addHandler(handler)
+
+# Versão do módulo
+__version__ = "2.0.0"
+__author__ = "Sistema VHALINOR"
+__license__ = "Proprietary - VHALINOR Research"
+__copyright__ = "Copyright 2026, VHALINOR Systems"
+
+# Verificação de dependências
+_REQUIRED_PACKAGES = {
+    'numpy': '1.21.0',
+    'scikit-learn': '1.0.0',
+    'pandas': '1.3.0',
+    'deap': '1.3.1',  # Para algoritmos genéticos
+}
+
+
+def _check_dependencies():
+    """Verifica dependências necessárias."""
+    missing_packages = []
+    outdated_packages = []
+    
+    for package, min_version in _REQUIRED_PACKAGES.items():
+        try:
+            module = importlib.import_module(package)
+            # Tenta obter a versão
+            if hasattr(module, '__version__'):
+                version = module.__version__
+                # Comparação básica de versão
+                from packaging import version as packaging_version
+                if packaging_version.parse(version) < packaging_version.parse(min_version):
+                    outdated_packages.append(f"{package} ({version} < {min_version})")
+            elif hasattr(module, 'version'):
+                version = module.version
+                from packaging import version as packaging_version
+                if packaging_version.parse(version) < packaging_version.parse(min_version):
+                    outdated_packages.append(f"{package} ({version} < {min_version})")
+        except ImportError:
+            missing_packages.append(package)
+    
+    if missing_packages or outdated_packages:
+        warning_msg = "Dependências do módulo de aprendizado:\n"
+        if missing_packages:
+            warning_msg += f"  Faltando: {', '.join(missing_packages)}\n"
+        if outdated_packages:
+            warning_msg += f"  Desatualizadas: {', '.join(outdated_packages)}\n"
+        warning_msg += "  Instale com: pip install numpy scikit-learn pandas deap"
+        _logger.warning(warning_msg)
+        return False
+    return True
+
+
+# Executa verificação de dependências
+_dependencies_ok = _check_dependencies()
+
+# Importações condicionais baseadas em disponibilidade
+try:
+    from .continuo import AprendizadoContinuo
+    _APRENDIZADO_CONTINUO_AVAILABLE = True
+except ImportError as e:
+    _logger.error(f"Falha ao importar AprendizadoContinuo: {e}")
+    AprendizadoContinuo = None
+    _APRENDIZADO_CONTINUO_AVAILABLE = False
+
+try:
+    from .evolucional import AprendizadoEvolucional
+    _APRENDIZADO_EVOLUCIONAL_AVAILABLE = True
+except ImportError as e:
+    _logger.error(f"Falha ao importar AprendizadoEvolucional: {e}")
+    AprendizadoEvolucional = None
+    _APRENDIZADO_EVOLUCIONAL_AVAILABLE = False
+
+
+# Classes de fábrica e utilitárias
+class SistemaAprendizadoFactory:
+    """Fábrica para criação de sistemas de aprendizado."""
+    
+    @staticmethod
+    def criar_sistema(tipo: str, config: Optional[Dict[str, Any]]=None) -> Union['AprendizadoContinuo', 'AprendizadoEvolucional']:
+        """
+        Cria um sistema de aprendizado baseado no tipo especificado.
+        
+        Args:
+            tipo: 'continuo' ou 'evolucional'
+            config: Configurações opcionais para o sistema
+            
+        Returns:
+            Instância do sistema de aprendizado
+            
+        Raises:
+            ValueError: Se o tipo for inválido
+            ImportError: Se o módulo necessário não estiver disponível
+        """
+        config = config or {}
+        
+        if tipo.lower() == 'continuo':
+            if not _APRENDIZADO_CONTINUO_AVAILABLE:
+                raise ImportError("Módulo AprendizadoContinuo não disponível")
+            return AprendizadoContinuo(**config)
+        
+        elif tipo.lower() == 'evolucional':
+            if not _APRENDIZADO_EVOLUCIONAL_AVAILABLE:
+                raise ImportError("Módulo AprendizadoEvolucional não disponível")
+            return AprendizadoEvolucional(**config)
+        
+        else:
+            raise ValueError(f"Tipo de sistema desconhecido: {tipo}. Use 'continuo' ou 'evolucional'")
+    
+    @staticmethod
+    def criar_sistema_hibrido(config_continuo: Optional[Dict]=None,
+                              config_evolucional: Optional[Dict]=None) -> 'SistemaAprendizadoHibrido':
+        """
+        Cria um sistema híbrido que combina aprendizado contínuo e evolucional.
+        
+        Args:
+            config_continuo: Configuração para aprendizado contínuo
+            config_evolucional: Configuração para aprendizado evolucional
+            
+        Returns:
+            Sistema híbrido de aprendizado
+        """
+        from .hibrido import SistemaAprendizadoHibrido
+        return SistemaAprendizadoHibrido(
+            config_continuo=config_continuo,
+            config_evolucional=config_evolucional
+        )
+
+
+class SistemaAprendizadoHibrido:
+    """Sistema híbrido que combina aprendizado contínuo e evolucional."""
+    
+    def __init__(self, config_continuo: Optional[Dict]=None,
+                 config_evolucional: Optional[Dict]=None):
+        """
+        Inicializa o sistema híbrido.
+        
+        Args:
+            config_continuo: Configuração para aprendizado contínuo
+            config_evolucional: Configuração para aprendizado evolucional
+        """
+        self.continuo = SistemaAprendizadoFactory.criar_sistema('continuo', config_continuo)
+        self.evolucional = SistemaAprendizadoFactory.criar_sistema('evolucional', config_evolucional)
+        self._logger = logging.getLogger(f"{__name__}.Hibrido")
+    
+    def processar(self, dados: Any, modo: str='ambos') -> Dict[str, Any]:
+        """
+        Processa dados usando os sistemas de aprendizado.
+        
+        Args:
+            dados: Dados a serem processados
+            modo: 'continuo', 'evolucional' ou 'ambos'
+            
+        Returns:
+            Resultados do processamento
+        """
+        resultados = {}
+        
+        if modo in ['continuo', 'ambos']:
+            resultados['continuo'] = self.continuo.aprender(dados)
+        
+        if modo in ['evolucional', 'ambos']:
+            resultados['evolucional'] = self.evolucional.evoluir(dados)
+        
+        return resultados
+
+
+# Utilitários do módulo
+def verificar_configuracao() -> Dict[str, Any]:
+    """
+    Verifica a configuração do módulo de aprendizado.
+    
+    Returns:
+        Dicionário com status do módulo
+    """
+    status = {
+        'versao': __version__,
+        'dependencias_ok': _dependencies_ok,
+        'modulos_disponiveis': {
+            'AprendizadoContinuo': _APRENDIZADO_CONTINUO_AVAILABLE,
+            'AprendizadoEvolucional': _APRENDIZADO_EVOLUCIONAL_AVAILABLE,
+        },
+        'pacotes_requeridos': _REQUIRED_PACKAGES,
+        'caminho_modulo': str(Path(__file__).parent.absolute()),
+    }
+    
+    if _APRENDIZADO_CONTINUO_AVAILABLE and AprendizadoContinuo is not None:
+        status['AprendizadoContinuo_versao'] = getattr(AprendizadoContinuo, '__version__', 'N/A')
+    
+    if _APRENDIZADO_EVOLUCIONAL_AVAILABLE and AprendizadoEvolucional is not None:
+        status['AprendizadoEvolucional_versao'] = getattr(AprendizadoEvolucional, '__version__', 'N/A')
+    
+    return status
+
+
+def inicializar_sistema_aprendizado(config: Optional[Dict[str, Any]]=None) -> Dict[str, Any]:
+    """
+    Inicializa todos os sistemas de aprendizado disponíveis.
+    
+    Args:
+        config: Configuração para os sistemas
+        
+    Returns:
+        Dicionário com sistemas inicializados
+    """
+    config = config or {}
+    
+    sistemas = {}
+    
+    if _APRENDIZADO_CONTINUO_AVAILABLE:
+        sistemas['continuo'] = SistemaAprendizadoFactory.criar_sistema('continuo', config.get('continuo'))
+        _logger.info("Sistema de Aprendizado Contínuo inicializado")
+    
+    if _APRENDIZADO_EVOLUCIONAL_AVAILABLE:
+        sistemas['evolucional'] = SistemaAprendizadoFactory.criar_sistema('evolucional', config.get('evolucional'))
+        _logger.info("Sistema de Aprendizado Evolucional inicializado")
+    
+    # Criar sistema híbrido se ambos estiverem disponíveis
+    if len(sistemas) == 2:
+        sistemas['hibrido'] = SistemaAprendizadoFactory.criar_sistema_hibrido(
+            config_continuo=config.get('continuo'),
+            config_evolucional=config.get('evolucional')
+        )
+        _logger.info("Sistema de Aprendizado Híbrido inicializado")
+    
+    return sistemas
+
+
+# Decoradores utilitários
+def monitorar_desempenho(func):
+    """
+    Decorador para monitorar desempenho de funções de aprendizado.
+    """
+    import time
+    from functools import wraps
+    
+    @wraps(func)
+    def wrapper(*args, **kwargs):
+        inicio = time.time()
+        resultado = func(*args, **kwargs)
+        duracao = time.time() - inicio
+        
+        # Log de desempenho
+        _logger.debug(f"Função {func.__name__} executada em {duracao:.4f} segundos")
+        
+        # Adiciona informação de tempo ao resultado se for dicionário
+        if isinstance(resultado, dict):
+            resultado['_tempo_execucao'] = duracao
+        
+        return resultado
+    
+    return wrapper
+
+
+def validar_dados_aprendizado(func):
+    """
+    Decorador para validar dados de entrada para funções de aprendizado.
+    """
+    from functools import wraps
+    
+    @wraps(func)
+    def wrapper(dados, *args, **kwargs):
+        # Validações básicas
+        if dados is None:
+            raise ValueError("Dados não podem ser None")
+        
+        if isinstance(dados, (list, tuple)) and len(dados) == 0:
+            raise ValueError("Dados não podem estar vazios")
+        
+        if hasattr(dados, '__len__') and len(dados) == 0:
+            raise ValueError("Dados não podem estar vazios")
+        
+        return func(dados, *args, **kwargs)
+    
+    return wrapper
+
+
+# Constantes do módulo
+class ModosAprendizado:
+    """Constantes para modos de aprendizado."""
+    CONTÍNUO = 'continuo'
+    EVOLUCIONAL = 'evolucional'
+    HÍBRIDO = 'hibrido'
+    BATCH = 'batch'  # Processamento em lote
+    ONLINE = 'online'  # Processamento online/streaming
+    REFORÇO = 'reforco'  # Aprendizado por reforço
+
+
+class MetricasAvaliacao:
+    """Constantes para métricas de avaliação."""
+    ACURACIA = 'acuracia'
+    PRECISAO = 'precisao'
+    RECALL = 'recall'
+    F1_SCORE = 'f1_score'
+    LOSS = 'loss'
+    ENTROPIA = 'entropia'
+    DIVERSIDADE = 'diversidade'
+    ADAPTABILIDADE = 'adaptabilidade'
+
+
+# Exportações públicas
+__all__ = [
+    # Classes principais
+    'AprendizadoContinuo',
+    'AprendizadoEvolucional',
+    
+    # Fábricas e utilitários
+    'SistemaAprendizadoFactory',
+    'SistemaAprendizadoHibrido',
+    
+    # Funções utilitárias
+    'verificar_configuracao',
+    'inicializar_sistema_aprendizado',
+    
+    # Decoradores
+    'monitorar_desempenho',
+    'validar_dados_aprendizado',
+    
+    # Constantes
+    'ModosAprendizado',
+    'MetricasAvaliacao',
+    
+    # Metadados
+    '__version__',
+    '__author__',
+    '__license__',
+]
+
+# Mensagem de inicialização
+if __name__ != "__main__":
+    if _dependencies_ok and (_APRENDIZADO_CONTINUO_AVAILABLE or _APRENDIZADO_EVOLUCIONAL_AVAILABLE):
+        _logger.info(
+            f"Módulo de Aprendizado Avançado v{__version__} carregado. "
+            f"Contínuo: {'✓' if _APRENDIZADO_CONTINUO_AVAILABLE else '✗'}, "
+            f"Evolucional: {'✓' if _APRENDIZADO_EVOLUCIONAL_AVAILABLE else '✗'}"
+        )
+    else:
+        _logger.warning(
+            f"Módulo de Aprendizado carregado com limitações. "
+            f"Dependências: {'✓' if _dependencies_ok else '✗'}"
+        )
+
+# Ponto de entrada para testes
+if __name__ == "__main__":
+    print(f"Módulo de Aprendizado Avançado - VHALINOR.IAG v{__version__}")
+    print("=" * 50)
+    
+    config_status = verificar_configuracao()
+    
+    print("\nStatus da Configuração:")
+    for chave, valor in config_status.items():
+        if isinstance(valor, dict):
+            print(f"  {chave}:")
+            for subchave, subvalor in valor.items():
+                print(f"    {subchave}: {subvalor}")
+        else:
+            print(f"  {chave}: {valor}")
+    
+    print("\nSistemas disponíveis para importação:")
+    for item in __all__:
+        print(f"  • {item}")
+    
+    print("\nExemplo de uso:")
+    print("""
+  # Verificar configuração
+  from aprendizado import verificar_configuracao
+  status = verificar_configuracao()
+  
+  # Inicializar sistemas
+  from aprendizado import inicializar_sistema_aprendizado
+  sistemas = inicializar_sistema_aprendizado()
+  
+  # Usar fábrica
+  from aprendizado import SistemaAprendizadoFactory
+  sistema = SistemaAprendizadoFactory.criar_sistema('continuo')
+    """)
