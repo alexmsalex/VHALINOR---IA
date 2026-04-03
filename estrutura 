@@ -1,0 +1,7 @@
+VHALINOR---IA/
+├── VHALINOR/
+│   └── aprendizado/
+│       ├── __init__.py
+│       └── aprendizado.py    
+├── requirements.txt
+└── ...
