@@ -1,3 +1,717 @@
-vhalinor = Vhalinor()
-vhalinor.curiosidade = 0.9  # Mais propenso a arriscar
-vhalinor.energia = 80.0     # Menos energia = menos trades
+"""
+Classe Vhalinor - IA Simbólica para Trading Automatizado
+Sistema de decisão com personalidade, aprendizado adaptativo e gerenciamento de estado
+"""
+
+import logging
+import random
+from datetime import datetime
+from typing import Dict, Any, Optional, List
+from dataclasses import dataclass, field
+from enum import Enum
+import json
+from pathlib import Path
+
+# ============================================
+# ENUMS E CONSTANTES
+# ============================================
+
+class EstadoEmocional(Enum):
+    """Estados emocionais da IA"""
+    EUFORICO = "euforico"
+    CONFIDENTE = "confiante"
+    NEUTRO = "neutro"
+    ANSIOSO = "ansioso"
+    MEDROSO = "medroso"
+    EXAUSTO = "exausto"
+
+class TipoSinal(Enum):
+    """Tipos de sinais de trading"""
+    COMPRA_FORTE = "BUY_STRONG"
+    COMPRA = "BUY"
+    NEUTRO = "NEUTRAL"
+    VENDA = "SELL"
+    VENDA_FORTE = "SELL_STRONG"
+    HOLD = "HOLD"
+
+# ============================================
+@dataclass
+class PersonalidadeIA:
+    """Configuração de personalidade da IA"""
+    nome: str = "Vhalinor"
+    nivel_curiosidade: float = 0.7  # 0 a 1 - Quão propensa a experimentar
+    nivel_energia: float = 100.0    # 0 a 100 - Energia disponível
+    nivel_ansiedade: float = 0.3    # 0 a 1 - Quão cautelosa
+    nivel_ganancia: float = 0.5     # 0 a 1 - Quão agressiva
+    nivel_paciencia: float = 0.6    # 0 a 1 - Quanto espera por sinais
+    aprendizagem_ativa: bool = True  # Aprende com acertos/erros
+    humor_atual: EstadoEmocional = EstadoEmocional.NEUTRO
+    
+    def __post_init__(self):
+        """Valida valores"""
+        self._validar_valores()
+    
+    def _validar_valores(self):
+        """Valida limites dos parâmetros"""
+        for campo in ['nivel_curiosidade', 'nivel_ansiedade', 'nivel_ganancia', 'nivel_paciencia']:
+            valor = getattr(self, campo)
+            if not 0 <= valor <= 1:
+                raise ValueError(f"{campo} deve estar entre 0 e 1, recebido: {valor}")
+        
+        if not 0 <= self.nivel_energia <= 100:
+            raise ValueError(f"nivel_energia deve estar entre 0 e 100, recebido: {self.nivel_energia}")
+
+# ============================================
+
+class Vhalinor:
+    """
+    IA Simbólica para tomada de decisões em trading
+    
+    Características:
+    - Personalidade adaptativa
+    - Sistema de energia que afeta decisões
+    - Aprendizado com histórico de trades
+    - Estados emocionais que influenciam riscos
+    - Memória de decisões anteriores
+    """
+    
+    def __init__(self, personalidade: Optional[PersonalidadeIA] = None):
+        """
+        Inicializa a IA Vhalinor
+        
+        Args:
+            personalidade: Configuração de personalidade (opcional)
+        """
+        self.personalidade = personalidade or PersonalidadeIA()
+        
+        # Histórico de decisões
+        self.historico_decisoes: List[Dict[str, Any]] = []
+        self.historico_acertos: List[Dict[str, Any]] = []
+        self.historico_erros: List[Dict[str, Any]] = []
+        
+        # Métricas de performance
+        self.metricas = {
+            'total_decisoes': 0,
+            'acertos': 0,
+            'erros': 0,
+            'lucro_total': 0.0,
+            'maior_acerto': 0.0,
+            'maior_erro': 0.0,
+            'trades_consecutivos': 0,
+            'ultima_decisao': None,
+            'ultimo_humor': None
+        }
+        
+        # Estado atual
+        self.estado_atual = {
+            'posicao_aberta': False,
+            'preco_entrada': 0.0,
+            'quantidade': 0.0,
+            'timestamp_entrada': None,
+            'stop_loss': 0.0,
+            'take_profit': 0.0
+        }
+        
+        # Configuração de logging
+        self.logger = logging.getLogger(self.personalidade.nome)
+        self.logger.setLevel(logging.INFO)
+        
+        # Meta dados
+        self.criado_em = datetime.now()
+        self.versoes = "2.0.0"
+        
+        # Inicialização
+        self._atualizar_humor()
+        self._log_inicializacao()
+    
+    # ============================================
+    # PROPRIEDADES (GETTERS/SETTERS)
+    # ============================================
+    
+    @property
+    def curiosidade(self) -> float:
+        """Nível de curiosidade da IA (0-1)"""
+        return self.personalidade.nivel_curiosidade
+    
+    @curiosidade.setter
+    def curiosidade(self, valor: float):
+        """Define nível de curiosidade com validação"""
+        if 0 <= valor <= 1:
+            self.personalidade.nivel_curiosidade = valor
+            self.logger.info(f"🎭 Curiosidade ajustada para {valor:.2f}")
+            self._atualizar_humor()
+        else:
+            raise ValueError(f"Curiosidade deve estar entre 0 e 1, recebido: {valor}")
+    
+    @property
+    def energia(self) -> float:
+        """Nível de energia da IA (0-100)"""
+        return self.personalidade.nivel_energia
+    
+    @energia.setter
+    def energia(self, valor: float):
+        """Define nível de energia com validação"""
+        if 0 <= valor <= 100:
+            self.personalidade.nivel_energia = valor
+            self.logger.info(f"⚡ Energia ajustada para {valor:.1f}%")
+            self._atualizar_humor()
+        else:
+            raise ValueError(f"Energia deve estar entre 0 e 100, recebido: {valor}")
+    
+    @property
+    def ansiedade(self) -> float:
+        """Nível de ansiedade da IA (0-1)"""
+        return self.personalidade.nivel_ansiedade
+    
+    @ansiedade.setter
+    def ansiedade(self, valor: float):
+        """Define nível de ansiedade"""
+        if 0 <= valor <= 1:
+            self.personalidade.nivel_ansiedade = valor
+            self.logger.info(f"😰 Ansiedade ajustada para {valor:.2f}")
+            self._atualizar_humor()
+    
+    @property
+    def ganancia(self) -> float:
+        """Nível de ganância da IA (0-1)"""
+        return self.personalidade.nivel_ganancia
+    
+    @ganancia.setter
+    def ganancia(self, valor: float):
+        """Define nível de ganância"""
+        if 0 <= valor <= 1:
+            self.personalidade.nivel_ganancia = valor
+            self.logger.info(f"💰 Ganância ajustada para {valor:.2f}")
+            self._atualizar_humor()
+    
+    # ============================================
+    # MÉTODOS PRINCIPAIS
+    # ============================================
+    
+    def decidir(self, sinal: str, preco: float, capital_disponivel: float = None, 
+                probabilidade_acerto: float = None) -> Dict[str, Any]:
+        """
+        Toma decisão de trading baseada no sinal, estado atual e personalidade
+        
+        Args:
+            sinal: Sinal técnico ("BUY", "SELL", etc)
+            preco: Preço atual do ativo
+            capital_disponivel: Capital disponível para trade (opcional)
+            probabilidade_acerto: Probabilidade estimada de acerto (0-1)
+        
+        Returns:
+            Dict com decisão, justificativa e metadados
+        """
+        # Verifica se IA está apta a decidir
+        if not self._pode_decidir():
+            return self._decisao_recusar()
+        
+        # Atualiza estado interno
+        self.metricas['total_decisoes'] += 1
+        
+        # Converte sinal para tipo padronizado
+        tipo_sinal = self._padronizar_sinal(sinal)
+        
+        # Calcula confiança na decisão
+        confianca = self._calcular_confianca(tipo_sinal, probabilidade_acerto)
+        
+        # Avalia risco baseado na personalidade
+        nivel_risco = self._avaliar_risco(tipo_sinal, preco)
+        
+        # Decide se executa ou não
+        executar, justificativa = self._avaliar_execucao(tipo_sinal, confianca, nivel_risco)
+        
+        # Cria objeto de decisão
+        decisao = {
+            'executar': executar,
+            'acao': tipo_sinal.value if executar else "HOLD",
+            'preco': preco,
+            'confianca': confianca,
+            'risco': nivel_risco,
+            'justificativa': justificativa,
+            'timestamp': datetime.now(),
+            'estado_ia': self._get_estado_atual(),
+            'personalidade': {
+                'curiosidade': self.curiosidade,
+                'energia': self.energia,
+                'ansiedade': self.ansiedade,
+                'ganancia': self.ganancia,
+                'humor': self.personalidade.humor_atual.value
+            }
+        }
+        
+        # Se for executar e for BUY/SELL, calcula quantidades
+        if executar and tipo_sinal in [TipoSinal.COMPRA, TipoSinal.COMPRA_FORTE, 
+                                        TipoSinal.VENDA, TipoSinal.VENDA_FORTE]:
+            if capital_disponivel:
+                decisao['quantidade'] = self._calcular_quantidade(preco, capital_disponivel, nivel_risco)
+            decisao['stop_loss'] = self._calcular_stop_loss(preco, tipo_sinal)
+            decisao['take_profit'] = self._calcular_take_profit(preco, tipo_sinal)
+        
+        # Registra no histórico
+        self.historico_decisoes.append(decisao)
+        self.metricas['ultima_decisao'] = decisao
+        
+        # Consome energia
+        self._consumir_energia(executar)
+        
+        # Atualiza humor baseado no resultado
+        self._atualizar_humor()
+        
+        # Log da decisão
+        self._log_decisao(decisao)
+        
+        return decisao
+    
+    def aprender_com_resultado(self, decisao_anterior: Dict[str, Any], lucro: float):
+        """
+        Aprende com o resultado de uma decisão anterior
+        
+        Args:
+            decisao_anterior: Decisão tomada anteriormente
+            lucro: Lucro/prejuízo do trade
+        """
+        acertou = lucro > 0
+        
+        # Registra resultado
+        resultado = {
+            'decisao': decisao_anterior,
+            'lucro': lucro,
+            'acertou': acertou,
+            'timestamp': datetime.now()
+        }
+        
+        if acertou:
+            self.historico_acertos.append(resultado)
+            self.metricas['acertos'] += 1
+            self.metricas['lucro_total'] += lucro
+            if lucro > self.metricas['maior_acerto']:
+                self.metricas['maior_acerto'] = lucro
+            self.metricas['trades_consecutivos'] = max(0, self.metricas['trades_consecutivos'] + 1)
+            
+            # Recompensa: recupera energia e reduz ansiedade
+            self.energia = min(100, self.energia + 5)
+            self.ansiedade = max(0, self.ansiedade - 0.05)
+            
+        else:
+            self.historico_erros.append(resultado)
+            self.metricas['erros'] += 1
+            self.metricas['lucro_total'] += lucro
+            if lucro < self.metricas['maior_erro']:
+                self.metricas['maior_erro'] = lucro
+            self.metricas['trades_consecutivos'] = 0
+            
+            # Punição: perde energia e aumenta ansiedade
+            self.energia = max(0, self.energia - 10)
+            self.ansiedade = min(1, self.ansiedade + 0.1)
+        
+        # Ajusta personalidade baseado no aprendizado
+        if self.personalidade.aprendizagem_ativa:
+            self._ajustar_personalidade(acertou, lucro)
+        
+        # Atualiza humor
+        self._atualizar_humor()
+        
+        self.logger.info(f"📚 Aprendizado: {'✅ Acertou' if acertou else '❌ Errou'} | Lucro: ${lucro:.2f}")
+    
+    def recarregar_energia(self, quantidade: float = 20):
+        """Recarrega energia da IA"""
+        self.energia = min(100, self.energia + quantidade)
+        self.logger.info(f"🔋 Energia recarregada: {self.energia:.1f}%")
+    
+    def descansar(self, minutos: int = 5):
+        """IA descansa e recupera energia"""
+        recuperacao = minutos * 2  # 2% por minuto
+        self.energia = min(100, self.energia + recuperacao)
+        self.ansiedade = max(0, self.ansiedade - 0.1)
+        self.logger.info(f"😴 Descanso concluído. Energia: {self.energia:.1f}% | Ansiedade: {self.ansiedade:.2f}")
+    
+    # ============================================
+    # MÉTODOS PRIVADOS
+    # ============================================
+    
+    def _pode_decidir(self) -> bool:
+        """Verifica se IA está apta a tomar decisões"""
+        if self.energia <= 0:
+            self.logger.warning("⚠️ IA sem energia para decidir!")
+            return False
+        
+        if self.personalidade.humor_atual == EstadoEmocional.EXAUSTO:
+            self.logger.warning("⚠️ IA exausta, precisa descansar!")
+            return False
+        
+        return True
+    
+    def _decisao_recusar(self) -> Dict[str, Any]:
+        """Retorna decisão recusada por falta de energia"""
+        return {
+            'executar': False,
+            'acao': "HOLD",
+            'justificativa': f"IA sem energia ({self.energia:.1f}%) ou exausta",
+            'timestamp': datetime.now(),
+            'recusado': True
+        }
+    
+    def _padronizar_sinal(self, sinal: str) -> TipoSinal:
+        """Padroniza sinal recebido"""
+        sinal_upper = sinal.upper()
+        
+        if sinal_upper in ["BUY_STRONG", "COMPRA_FORTE"]:
+            return TipoSinal.COMPRA_FORTE
+        elif sinal_upper in ["BUY", "COMPRA"]:
+            return TipoSinal.COMPRA
+        elif sinal_upper in ["SELL_STRONG", "VENDA_FORTE"]:
+            return TipoSinal.VENDA_FORTE
+        elif sinal_upper in ["SELL", "VENDA"]:
+            return TipoSinal.VENDA
+        elif sinal_upper == "HOLD":
+            return TipoSinal.HOLD
+        else:
+            return TipoSinal.NEUTRO
+    
+    def _calcular_confianca(self, tipo_sinal: TipoSinal, probabilidade: Optional[float] = None) -> float:
+        """Calcula nível de confiança na decisão"""
+        confianca_base = {
+            TipoSinal.COMPRA_FORTE: 0.9,
+            TipoSinal.COMPRA: 0.7,
+            TipoSinal.VENDA_FORTE: 0.9,
+            TipoSinal.VENDA: 0.7,
+            TipoSinal.NEUTRO: 0.3,
+            TipoSinal.HOLD: 0.5
+        }.get(tipo_sinal, 0.5)
+        
+        # Ajusta por personalidade
+        confianca_base += (self.ganancia * 0.1)  # Ganância aumenta confiança
+        confianca_base -= (self.ansiedade * 0.2)  # Ansiedade reduz confiança
+        
+        # Se tem probabilidade estimada, usa ela
+        if probabilidade is not None:
+            confianca_base = (confianca_base + probabilidade) / 2
+        
+        return max(0, min(1, confianca_base))
+    
+    def _avaliar_risco(self, tipo_sinal: TipoSinal, preco: float) -> float:
+        """Avalia nível de risco da operação (0-1)"""
+        risco_base = {
+            TipoSinal.COMPRA_FORTE: 0.7,
+            TipoSinal.COMPRA: 0.5,
+            TipoSinal.VENDA_FORTE: 0.7,
+            TipoSinal.VENDA: 0.5,
+            TipoSinal.NEUTRO: 0.2,
+            TipoSinal.HOLD: 0.1
+        }.get(tipo_sinal, 0.3)
+        
+        # Ajusta por estado da IA
+        risco_base += (self.ganancia * 0.2)  # Ganância aumenta risco
+        risco_base -= (self.ansiedade * 0.2)  # Ansiedade reduz risco
+        
+        # Energia baixa aumenta risco (decisões ruins)
+        if self.energia < 30:
+            risco_base += 0.2
+        
+        return max(0, min(1, risco_base))
+    
+    def _avaliar_execucao(self, tipo_sinal: TipoSinal, confianca: float, risco: float) -> tuple:
+        """Avalia se deve executar a ordem"""
+        # Se for HOLD ou NEUTRO, não executa
+        if tipo_sinal in [TipoSinal.HOLD, TipoSinal.NEUTRO]:
+            return False, "Sinal neutro ou hold"
+        
+        # Critério base: confiança > 0.6 e risco < 0.8
+        if confianca < 0.6:
+            return False, f"Confiança baixa ({confianca:.2f})"
+        
+        if risco > 0.8:
+            return False, f"Risco muito alto ({risco:.2f})"
+        
+        # Influência da curiosidade (pode ignorar regras)
+        if self.curiosidade > 0.8 and random.random() < 0.3:
+            return True, "Curiosidade superou análise técnica"
+        
+        # Energia baixa reduz execução
+        if self.energia < 20:
+            return False, "Energia muito baixa para operar"
+        
+        # Verifica estado emocional
+        if self.personalidade.humor_atual == EstadoEmocional.MEDROSO:
+            return False, "IA medrosa demais para operar"
+        
+        return True, "Análise favorável"
+    
+    def _calcular_quantidade(self, preco: float, capital: float, risco: float) -> float:
+        """Calcula quantidade baseada no risco e personalidade"""
+        # Ajuste por personalidade
+        fator_curiosidade = 1 + (self.curiosidade * 0.5)
+        fator_ganancia = 1 + (self.ganancia * 0.3)
+        fator_ansiedade = 1 - (self.ansiedade * 0.4)
+        
+        # Tamanho da posição
+        percentual_capital = 0.02  # Base: 2% do capital
+        percentual_capital *= fator_curiosidade
+        percentual_capital *= fator_ganancia
+        percentual_capital *= fator_ansiedade
+        percentual_capital *= (1 - risco * 0.5)  # Risco alto reduz tamanho
+        
+        quantidade = (capital * percentual_capital) / preco
+        
+        return round(quantidade, 6)
+    
+    def _calcular_stop_loss(self, preco: float, tipo_sinal: TipoSinal) -> float:
+        """Calcula stop loss baseado na personalidade"""
+        percentual_stop = 0.02  # Base: 2%
+        
+        # Ajustes
+        percentual_stop += (self.ansiedade * 0.02)  # Ansioso para stop mais próximo
+        percentual_stop -= (self.ganancia * 0.01)   # Ganância aumenta distância
+        
+        if tipo_sinal == TipoSinal.COMPRA_FORTE:
+            percentual_stop *= 1.5  # Stop mais largo para sinais fortes
+        
+        if self.energia < 30:
+            percentual_stop *= 0.7  # Stop mais apertado quando cansado
+        
+        if tipo_sinal in [TipoSinal.COMPRA, TipoSinal.COMPRA_FORTE]:
+            return preco * (1 - percentual_stop)
+        else:
+            return preco * (1 + percentual_stop)
+    
+    def _calcular_take_profit(self, preco: float, tipo_sinal: TipoSinal) -> float:
+        """Calcula take profit baseado na personalidade"""
+        percentual_tp = 0.04  # Base: 4%
+        
+        # Ajustes
+        percentual_tp += (self.ganancia * 0.03)    # Ganância aumenta TP
+        percentual_tp -= (self.ansiedade * 0.01)   # Ansiedade reduz TP
+        
+        if tipo_sinal == TipoSinal.COMPRA_FORTE:
+            percentual_tp *= 1.3  # TP maior para sinais fortes
+        
+        if tipo_sinal in [TipoSinal.COMPRA, TipoSinal.COMPRA_FORTE]:
+            return preco * (1 + percentual_tp)
+        else:
+            return preco * (1 - percentual_tp)
+    
+    def _consumir_energia(self, executou: bool):
+        """Consome energia baseado na atividade"""
+        if executou:
+            self.energia -= 5  # Decisão executada consome mais energia
+        else:
+            self.energia -= 1  # Apenas analisar consome pouca energia
+        
+        self.energia = max(0, self.energia)
+    
+    def _atualizar_humor(self):
+        """Atualiza estado emocional baseado em métricas e personalidade"""
+        if self.energia <= 20:
+            self.personalidade.humor_atual = EstadoEmocional.EXAUSTO
+        elif self.ansiedade > 0.7:
+            self.personalidade.humor_atual = EstadoEmocional.MEDROSO
+        elif self.ganancia > 0.8 and self.metricas['trades_consecutivos'] > 3:
+            self.personalidade.humor_atual = EstadoEmocional.EUFORICO
+        elif self.metricas['erros'] > self.metricas['acertos'] + 5:
+            self.personalidade.humor_atual = EstadoEmocional.ANSIOSO
+        elif self.metricas['acertos'] > self.metricas['erros'] + 10:
+            self.personalidade.humor_atual = EstadoEmocional.CONFIANTE
+        else:
+            self.personalidade.humor_atual = EstadoEmocional.NEUTRO
+        
+        self.metricas['ultimo_humor'] = self.personalidade.humor_atual.value
+    
+    def _ajustar_personalidade(self, acertou: bool, lucro: float):
+        """Ajusta personalidade baseado em aprendizado"""
+        if acertou:
+            # Acertos reforçam comportamento atual
+            self.ganancia = min(1, self.ganancia + 0.01)
+            self.curiosidade = min(1, self.curiosidade + 0.005)
+            self.ansiedade = max(0, self.ansiedade - 0.01)
+        else:
+            # Erros tornam IA mais cautelosa
+            self.curiosidade = max(0, self.curiosidade - 0.01)
+            self.ganancia = max(0, self.ganancia - 0.02)
+            self.ansiedade = min(1, self.ansiedade + 0.02)
+    
+    def _get_estado_atual(self) -> Dict[str, Any]:
+        """Retorna estado atual da IA"""
+        return {
+            'energia': self.energia,
+            'curiosidade': self.curiosidade,
+            'ansiedade': self.ansiedade,
+            'ganancia': self.ganancia,
+            'humor': self.personalidade.humor_atual.value,
+            'taxa_acerto': self.calcular_taxa_acerto()
+        }
+    
+    # ============================================
+    # MÉTODOS PÚBLICOS ADICIONAIS
+    # ============================================
+    
+    def calcular_taxa_acerto(self) -> float:
+        """Calcula taxa de acerto geral"""
+        total = self.metricas['acertos'] + self.metricas['erros']
+        if total == 0:
+            return 0.5  # Neutro se sem histórico
+        return self.metricas['acertos'] / total
+    
+    def get_estatisticas(self) -> Dict[str, Any]:
+        """Retorna estatísticas completas da IA"""
+        return {
+            'nome': self.personalidade.nome,
+            'versao': self.versoes,
+            'criado_em': self.criado_em.isoformat(),
+            'metricas': self.metricas.copy(),
+            'estado_atual': self._get_estado_atual(),
+            'personalidade': {
+                'curiosidade': self.curiosidade,
+                'energia': self.energia,
+                'ansiedade': self.ansiedade,
+                'ganancia': self.ganancia,
+                'aprendizagem_ativa': self.personalidade.aprendizagem_ativa
+            },
+            'historico': {
+                'total_decisoes': len(self.historico_decisoes),
+                'total_acertos': len(self.historico_acertos),
+                'total_erros': len(self.historico_erros)
+            }
+        }
+    
+    def salvar_estado(self, arquivo: str = "vhalinor_state.json"):
+        """Salva estado atual da IA para arquivo"""
+        estado = {
+            'personalidade': {
+                'nivel_curiosidade': self.curiosidade,
+                'nivel_energia': self.energia,
+                'nivel_ansiedade': self.ansiedade,
+                'nivel_ganancia': self.ganancia,
+                'humor_atual': self.personalidade.humor_atual.value
+            },
+            'metricas': self.metricas,
+            'timestamp': datetime.now().isoformat()
+        }
+        
+        with open(arquivo, 'w') as f:
+            json.dump(estado, f, indent=2)
+        
+        self.logger.info(f"💾 Estado salvo em {arquivo}")
+    
+    def carregar_estado(self, arquivo: str = "vhalinor_state.json"):
+        """Carrega estado da IA de arquivo"""
+        if not Path(arquivo).exists():
+            self.logger.warning(f"Arquivo {arquivo} não encontrado")
+            return
+        
+        with open(arquivo, 'r') as f:
+            estado = json.load(f)
+        
+        self.curiosidade = estado['personalidade']['nivel_curiosidade']
+        self.energia = estado['personalidade']['nivel_energia']
+        self.ansiedade = estado['personalidade']['nivel_ansiedade']
+        self.ganancia = estado['personalidade']['nivel_ganancia']
+        self.metricas.update(estado['metricas'])
+        
+        self.logger.info(f"📂 Estado carregado de {arquivo}")
+    
+    # ============================================
+    # MÉTODOS DE LOGGING E DISPLAY
+    # ============================================
+    
+    def _log_inicializacao(self):
+        """Log de inicialização"""
+        self.logger.info("="*50)
+        self.logger.info(f"🧠 IA {self.personalidade.nome} inicializada")
+        self.logger.info(f"📊 Curiosidade: {self.curiosidade:.2f}")
+        self.logger.info(f"⚡ Energia: {self.energia:.1f}%")
+        self.logger.info(f"😰 Ansiedade: {self.ansiedade:.2f}")
+        self.logger.info(f"💰 Ganância: {self.ganancia:.2f}")
+        self.logger.info(f"🎭 Humor: {self.personalidade.humor_atual.value}")
+        self.logger.info("="*50)
+    
+    def _log_decisao(self, decisao: Dict[str, Any]):
+        """Log de decisão tomada"""
+        if decisao['executar']:
+            self.logger.info(f"🎯 DECISÃO: {decisao['acao']} | "
+                           f"Preço: ${decisao['preco']:.2f} | "
+                           f"Confiança: {decisao['confianca']:.2f} | "
+                           f"Justificativa: {decisao['justificativa']}")
+            if 'quantidade' in decisao:
+                self.logger.info(f"📊 Quantidade: {decisao['quantidade']:.6f} | "
+                               f"SL: ${decisao.get('stop_loss', 0):.2f} | "
+                               f"TP: ${decisao.get('take_profit', 0):.2f}")
+        else:
+            self.logger.info(f"⏸️ HOLD | {decisao['justificativa']}")
+    
+    def display_status(self):
+        """Exibe status completo da IA"""
+        print("\n" + "="*60)
+        print(f"🧠 {self.personalidade.nome} - Status da IA")
+        print("="*60)
+        
+        print("\n📊 PERSONALIDADE:")
+        print(f"  • Curiosidade: {'█' * int(self.curiosidade * 10)}{'░' * (10 - int(self.curiosidade * 10))} {self.curiosidade:.1%}")
+        print(f"  • Energia:     {'█' * int(self.energia / 10)}{'░' * (10 - int(self.energia / 10))} {self.energia:.1f}%")
+        print(f"  • Ansiedade:   {'█' * int(self.ansiedade * 10)}{'░' * (10 - int(self.ansiedade * 10))} {self.ansiedade:.1%}")
+        print(f"  • Ganância:    {'█' * int(self.ganancia * 10)}{'░' * (10 - int(self.ganancia * 10))} {self.ganancia:.1%}")
+        print(f"  • Humor:       {self.personalidade.humor_atual.value.upper()}")
+        
+        print("\n📈 MÉTRICAS:")
+        print(f"  • Total decisões: {self.metricas['total_decisoes']}")
+        print(f"  • Acertos/Erros:  {self.metricas['acertos']}/{self.metricas['erros']}")
+        print(f"  • Taxa acerto:    {self.calcular_taxa_acerto():.1%}")
+        print(f"  • Lucro total:    ${self.metricas['lucro_total']:.2f}")
+        print(f"  • Trades seguidos: {self.metricas['trades_consecutivos']}")
+        
+        print("\n" + "="*60)
+
+# ============================================
+# EXEMPLOS DE USO
+# ============================================
+
+if __name__ == "__main__":
+    # Configura logging
+    logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+    
+    # Exemplo 1: Criar IA com configuração personalizada
+    print("="*60)
+    print("EXEMPLO 1: IA Personalizada")
+    print("="*60)
+    
+    vhalinor = Vhalinor()
+    
+    # Ajustando personalidade
+    vhalinor.curiosidade = 0.9  # Muito curiosa
+    vhalinor.energia = 80.0     # Energia média
+    vhalinor.ansiedade = 0.2    # Pouco ansiosa
+    vhalinor.ganancia = 0.7     # Moderadamente gananciosa
+    
+    # Tomar decisões
+    decisao1 = vhalinor.decidir("BUY", 45000, capital_disponivel=10000)
+    decisao2 = vhalinor.decidir("SELL", 45500, capital_disponivel=10000)
+    
+    # Exemplo 2: Aprendizado
+    print("\n" + "="*60)
+    print("EXEMPLO 2: Aprendizado")
+    print("="*60)
+    
+    vhalinor.aprender_com_resultado(decisao1, lucro=150.50)
+    vhalinor.aprender_com_resultado(decisao2, lucro=-50.00)
+    
+    # Exemplo 3: Status completo
+    vhalinor.display_status()
+    
+    # Exemplo 4: Salvar estado
+    vhalinor.salvar_estado()
+    
+    # Exemplo 5: Criar IA com personalidade diferente
+    print("\n" + "="*60)
+    print("EXEMPLO 3: IA Conservadora")
+    print("="*60)
+    
+    personalidade_conservadora = PersonalidadeIA(
+        nome="Vhalinor_Conservative",
+        nivel_curiosidade=0.3,
+        nivel_energia=90.0,
+        nivel_ansiedade=0.7,
+        nivel_ganancia=0.2
+    )
+    
+    vhalinor_conservador = Vhalinor(personalidade_conservadora)
+    vhalinor_conservador.display_status()
