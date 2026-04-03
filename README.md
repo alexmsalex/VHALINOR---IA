@@ -1,4 +1,4 @@
-# VHALINOR---IA
+# VHALINOR-IA
 from binance.client import Client
 from binance.exceptions import BinanceAPIException
 import pandas as pd
