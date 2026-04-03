@@ -1,0 +1,87 @@
+{
+  "data_teste": "2026-04-02T00:04:27.700208",
+  "estatisticas": {
+    "total_modulos": 23,
+    "modulos_ok": 22,
+    "modulos_falha": 1,
+    "taxa_sucesso": 95.65217391304348
+  },
+  "modulos_ok": [
+    "consciencia_artificial",
+    "sentiencia_artificial",
+    "raciocinio_avancado",
+    "memoria_cognitiva",
+    "aprendizado_profundo",
+    "aprendizado_continuo",
+    "analise_profunda_padroes",
+    "analise_quantica",
+    "analise_noticias",
+    "analise_mercado_financeiro",
+    "analise_day_trade",
+    "evolucao_aprendizado",
+    "sensorial",
+    "automacao",
+    "leitor_pdf",
+    "arquitetura_organica",
+    "neurogenese_comunicacao",
+    "arquitetura_sistema",
+    "processamento_linguagem",
+    "visao_computacional",
+    "tomada_decisao",
+    "metacognicao"
+  ],
+  "modulos_falha": [
+    {
+      "modulo": "etica_ai_geral",
+      "erro": "No module named 'etica_ai_geral'"
+    }
+  ],
+  "funcionalidade": {
+    "ConscienciaArtificial": {
+      "status": "ok",
+      "classe": "<class 'consciencia_artificial.ConscienciaArtificial'>",
+      "instancia": "<consciencia_artificial.ConscienciaArtificial object at 0x000001DDCB22DFD0>"
+    },
+    "SentienciaArtificial": {
+      "status": "ok",
+      "classe": "<class 'sentiencia_artificial.SentienciaArtificial'>",
+      "instancia": "<sentiencia_artificial.SentienciaArtificial object at 0x000001DDCB22E270>"
+    },
+    "RaciocinioAvancado": {
+      "status": "ok",
+      "classe": "<class 'raciocinio_avancado.RaciocinioAvancado'>",
+      "instancia": "<raciocinio_avancado.RaciocinioAvancado object at 0x000001DDCB22DFD0>"
+    },
+    "MemoriaCognitiva": {
+      "status": "ok",
+      "classe": "<class 'memoria_cognitiva.MemoriaCognitiva'>",
+      "instancia": "<memoria_cognitiva.MemoriaCognitiva object at 0x000001DDCB22E270>"
+    },
+    "TomadaDecisao": {
+      "status": "ok",
+      "classe": "<class 'tomada_decisao.TomadaDecisao'>",
+      "instancia": "<tomada_decisao.TomadaDecisao object at 0x000001DDCB22DFD0>"
+    }
+  },
+  "integracao": {
+    "init": {
+      "status": "erro",
+      "erro": "attempted relative import with no known parent package"
+    },
+    "arquitetura": {
+      "status": "ok",
+      "componentes": 45
+    }
+  },
+  "interfaces": {
+    "cli": {
+      "status": "ok"
+    },
+    "gui": {
+      "status": "ok"
+    },
+    "trading": {
+      "status": "ok"
+    }
+  }
+}

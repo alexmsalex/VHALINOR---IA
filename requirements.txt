@@ -1,0 +1,166 @@
+# VHALINOR AI Geral v6.0 - Dependências
+# =====================================
+# Pacotes necessários para instalação completa do sistema
+
+# Core Data Science
+numpy>=1.21.0
+pandas>=1.3.0
+scipy>=1.8.0
+scikit-learn>=1.0.0
+
+# Deep Learning Frameworks
+tensorflow>=2.8.0
+torch>=1.11.0
+torchvision>=0.12.0
+torch-audio>=0.11.0
+keras>=2.8.0
+
+# Visualization
+matplotlib>=3.5.0
+seaborn>=0.11.0
+plotly>=5.0.0
+bokeh>=2.4.0
+
+# Web & Networking
+requests>=2.27.0
+beautifulsoup4>=4.10.0
+aiohttp>=3.8.0
+websockets>=10.0
+httpx>=0.23.0
+
+# Natural Language Processing
+nltk>=3.7
+spacy>=3.4.0
+transformers>=4.17.0
+gensim>=4.2.0
+textblob>=0.17.0
+
+# Computer Vision
+opencv-python>=4.5.5
+pillow>=9.0.0
+imageio>=2.19.0
+scikit-image>=0.19.0
+
+# PDF Processing
+PyPDF2>=2.0.0
+pdfplumber>=0.6.0
+pymupdf>=1.20.0
+pdfminer.six>=20220519
+
+# Financial Analysis
+yfinance>=0.1.70
+ta>=0.8.0
+pandas-datareader>=0.10.0
+stockstats>=0.3.2
+mplfinance>=0.12.9b
+
+# Quantum Computing (Opcional)
+# qiskit>=0.36.0
+# cirq>=0.15.0
+# pennylane>=0.25.0
+
+# Async & Concurrency
+asyncio>=3.4.3
+asyncio-mqtt>=0.10.0
+celery>=5.2.0
+redis>=4.2.0
+
+# Data Validation & Serialization
+pydantic>=1.9.0
+marshmallow>=3.15.0
+jsonschema>=4.4.0
+
+# CLI & UI
+typer>=0.4.0
+rich>=12.0.0
+click>=8.0.0
+tqdm>=4.64.0
+
+# Logging & Monitoring
+loguru>=0.6.0
+structlog>=22.1.0
+prometheus-client>=0.14.0
+
+# Configuration & Environment
+python-dotenv>=0.19.0
+pyyaml>=6.0
+configparser>=5.2.0
+decouple>=3.6
+
+# System & Performance
+psutil>=5.9.0
+memory-profiler>=0.60.0
+py-spy>=0.3.12
+line-profiler>=3.5.0
+
+# Database
+sqlalchemy>=1.4.0
+pymongo>=4.1.0
+
+# Testing & Quality (Desenvolvimento)
+# pytest>=7.0.0
+# pytest-cov>=3.0.0
+# black>=22.0.0
+# flake8>=4.0.0
+# mypy>=0.950
+
+# Documentation (Desenvolvimento)
+# sphinx>=4.5.0
+# sphinx-rtd-theme>=1.0.0
+# myst-parser>=0.17.0
+
+# Security
+cryptography>=36.0.0
+bcrypt>=3.2.0
+jwt>=1.2.0
+
+# Utilities
+python-dateutil>=2.8.0
+pytz>=2022.1
+click-default-group>=1.2.2
+colorama>=0.4.4
+
+# Audio Processing (para sistema sensorial)
+librosa>=0.9.0
+soundfile>=0.10.0
+pyaudio>=0.2.11
+
+# Image Processing avançado
+dlib>=19.22.0
+face-recognition>=1.3.0
+mediapipe>=0.8.0
+
+# Trading específico
+ccxt>=1.70.0
+binance>=1.0.15
+metatrader5>=5.0.37
+
+# Machine Learning adicional
+xgboost>=1.6.0
+lightgbm>=3.3.0
+catboost>=1.0.0
+shap>=0.41.0
+
+# Processamento de Linguagem avançado
+rouge-score>=0.1.0
+sacrebleu>=2.3.0
+datasets>=2.0.0
+
+# GPU acceleration (opcional)
+# cupy>=10.0.0
+# numba>=0.56.0
+
+# Web framework (para dashboard/API)
+fastapi>=0.75.0
+uvicorn>=0.18.0
+streamlit>=1.8.0
+
+# Jupyter notebooks
+jupyter>=1.0.0
+jupyterlab>=3.3.0
+ipywidgets>=7.7.0
+
+# Deploy e produção
+gunicorn>=20.1.0
+docker>=5.0.0
+kubernetes>=18.0.0

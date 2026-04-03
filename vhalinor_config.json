@@ -1,0 +1,18 @@
+{
+  "version": "6.0.0",
+  "python_version": "3.14",
+  "system": "windows",
+  "installation_type": "minimal",
+  "features": {
+    "basic_ai": true,
+    "data_analysis": true,
+    "trading": true,
+    "nlp": true,
+    "computer_vision": true
+  },
+  "notes": [
+    "Instalação mínima para Python 3.14+",
+    "Algumas bibliotecas podem não estar disponíveis",
+    "Use versões alternativas quando necessário"
+  ]
+}
