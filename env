@@ -1,0 +1,14 @@
+# Binance API Configuration
+# Para Testnet (recomendado para testes)
+BINANCE_API_KEY_TEST=seu_api_key_testnet_aqui
+BINANCE_API_SECRET_TEST=seu_api_secret_testnet_aqui
+
+# Para Produção (use com cautela!)
+BINANCE_API_KEY_PROD=sua_api_key_producao_aqui
+BINANCE_API_SECRET_PROD=sua_api_secret_producao_aqui
+
+# Configurações Gerais
+BINANCE_TESTNET=True
+BINANCE_SYMBOL=BTCUSDT
+BINANCE_INTERVAL=1m
+BINANCE_QUANTITY=0.001
