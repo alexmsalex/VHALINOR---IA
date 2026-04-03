@@ -1,0 +1,102 @@
+# VHALINOR---IA - Day Trader Autônomo (versão corrigida)
+from binance.client import Client
+from binance.exceptions import BinanceAPIException
+import pandas as pd
+import ta  # pip install ta
+import time
+import logging
+from collections import deque
+
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+
+class Vhalinor:
+    def __init__(self):
+        self.nome = "Vhalinor"
+        self.energia = 100.0
+        self.curiosidade = 0.8
+        self.memoria_trades = deque(maxlen=20)  # guarda últimos trades
+
+    def decidir(self, sinal: str, preco: float, prob: float = 0.7):
+        if self.energia < 30:
+            return f"{self.nome} está cansado... pausando trades."
+        
+        if random.random() < self.curiosidade * 0.2:  # intuição aleatória
+            sinal = "HOLD"
+        
+        msg = f"{self.nome}: "
+        if sinal == "BUY":
+            msg += f"Comprando BTC/USDT a {preco:.2f} (prob: {prob:.1%}). Energia: {self.energia:.1f}%"
+            self.energia -= 3.0
+        elif sinal == "SELL":
+            msg += f"Vendendo a {preco:.2f} — fechando posição!"
+            self.energia += 5.0
+        else:
+            msg += "Sem sinal forte... observando."
+        
+        self.curiosidade = min(1.0, self.curiosidade + 0.01) if sinal != "HOLD" else self.curiosidade
+        return msg
+
+# Config (use testnet!)
+API_KEY = "SUA_KEY_TESTNET"
+API_SECRET = "SUA_SECRET_TESTNET"
+client = Client(API_KEY, API_SECRET, testnet=True)
+
+SYMBOL = "BTCUSDT"
+INTERVAL = Client.KLINE_INTERVAL_1MINUTE
+QUANTIDADE = 0.001  # ajuste
+STOP_LOSS_PCT = 0.005  # 0.5%
+TAKE_PROFIT_PCT = 0.015  # 1.5%
+
+def get_data():
+    klines = client.get_klines(symbol=SYMBOL, interval=INTERVAL, limit=200)
+    df = pd.DataFrame(klines, columns=['open_time', 'open', 'high', 'low', 'close', 'volume', 'close_time', 'quote_asset_volume', 'number_of_trades', 'taker_buy_base_asset_volume', 'taker_buy_quote_asset_volume', 'ignore'])
+    df = pd.to_numeric(df )
+    df = pd.to_numeric(df['open' 'close' 'close'])
+    df = macd.macd()
+    df = macd.macd_signal()
+    return df
+
+def get_signal(df):
+    last = df.iloc[-1 -2]
+    
+    rsi_buy = (prev < 30) and (last >= 30)
+    macd_buy = (prev['macd'] < prev ) and (last > last )
+    
+    rsi_sell = (prev > 70) and (last <= 70)
+    macd_sell = (prev['macd'] > prev ) and (last < last )
+    
+    if rsi_buy and macd_buy:
+        return "BUY"
+    if rsi_sell and macd_sell:
+        return "SELL"
+    return None
+
+vhalinor = Vhalinor()
+
+while True:
+    try:
+        df = get_data()
+        df = calculate_indicators(df)
+        sinal = get_signal(df)
+        
+        if sinal:
+            preco = float(client.get_symbol_ticker(symbol=SYMBOL) )
+            msg = vhalinor.decidir(sinal, preco)
+            logging.info(msg)
+            
+            if sinal == "BUY":
+                # Market buy + OCO sell (stop + take)
+                client.order_market_buy(symbol=SYMBOL, quantity=QUANTIDADE)
+                # Para OCO, precisa de preço atual + offsets
+                # Exemplo simplificado: use limit orders ou ajuste manual
+                logging.info("Compra executada!")
+            
+            elif sinal == "SELL":
+                client.order_market_sell(symbol=SYMBOL, quantity=QUANTIDADE)
+                logging.info("Venda executada!")
+        
+        time.sleep(60)
+    
+    except Exception as e:
+        logging.error(f"Erro: {e}")
+        time.sleep(300)
