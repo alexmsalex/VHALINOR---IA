@@ -1,2 +1,60 @@
-API_KEY = "sua_api_key_aqui"
-API_SECRET = "sua_api_secret_aqui"
+# config.py
+import os
+from pathlib import Path
+
+# Carrega variáveis de ambiente de um arquivo .env (se existir)
+try:
+    from dotenv import load_dotenv
+    env_path = Path(__file__).parent / ".env"
+    load_dotenv(dotenv_path=env_path)
+except ImportError:
+    pass  # python-dotenv não instalado, usa variáveis do sistema diretamente
+
+# ====================
+# Configurações da API
+# ====================
+API_KEY = os.getenv("API_KEY")
+API_SECRET = os.getenv("API_SECRET")
+
+# ====================
+# Validação das credenciais
+# ====================
+def validate_config():
+    """Valida se as credenciais necessárias estão presentes."""
+    missing = []
+    if not API_KEY:
+        missing.append("API_KEY")
+    if not API_SECRET:
+        missing.append("API_SECRET")
+    
+    if missing:
+        raise ValueError(
+            f"Configuração incompleta. Variáveis faltando: {', '.join(missing)}. "
+            "Defina-as no ambiente ou no arquivo .env"
+        )
+    return True
+
+# ====================
+# Modo de desenvolvimento x produção
+# ====================
+ENVIRONMENT = os.getenv("ENVIRONMENT", "development")
+IS_PRODUCTION = ENVIRONMENT == "production"
+IS_DEVELOPMENT = ENVIRONMENT == "development"
+
+# ====================
+# Configurações adicionais (opcionais)
+# ====================
+API_TIMEOUT = int(os.getenv("API_TIMEOUT", 30))
+API_MAX_RETRIES = int(os.getenv("API_MAX_RETRIES", 3))
+
+# ====================
+# Exemplo de uso com validação automática
+# ====================
+if __name__ == "__main__":
+    try:
+        validate_config()
+        print(f"✅ Configuração válida - Ambiente: {ENVIRONMENT}")
+        print(f"   API_KEY: {'*' * len(API_KEY) if API_KEY else 'Não definida'}")
+        print(f"   API_SECRET: {'*' * len(API_SECRET) if API_SECRET else 'Não definida'}")
+    except ValueError as e:
+        print(f"❌ Erro: {e}")
