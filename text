@@ -1,12 +1,21 @@
-
-## Principais melhorias:
-
-1. **Estrutura profissional**: Adicionei badges, seções organizadas e formatação clara
-2. **Documentação completa**: Explicação da estratégia, pré-requisitos e configuração
-3. **Tabelas visuais**: Para estratégia de trading e solução de problemas
-4. **Emojis e ícones**: Tornam o documento mais amigável e escaneável
-5. **Avisos importantes**: Disclaimer de risco e recomendações de segurança
-6. **Exemplos práticos**: Output e personalização do código
-7. **Referências técnicas**: Links para documentação oficial
-
-O README agora está muito mais profissional e útil para outros desenvolvedores que queiram entender ou usar seu projeto! 🚀
+vhalinor_ia/
+├── core/
+│   ├── analyzer.py
+│   ├── strategist.py      ← NOVO: decisor inteligente
+│   ├── risk_manager.py
+│   └── executor.py
+├── strategies/
+│   ├── __init__.py
+│   ├── base.py            ← Classe base
+│   ├── breakout.py
+│   ├── momentum.py
+│   ├── mean_reversion.py
+│   ├── vwap.py
+│   ├── ema_crossover.py
+│   └── scalping.py
+├── data/
+│   └── fetcher.py
+├── config/settings.py
+├── main.py
+├── requirements.txt
+└── README.md
