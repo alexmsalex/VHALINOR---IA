@@ -1,27 +1,569 @@
-# Opção 1: Configuração padrão
-from trading_config import TradingConfig
+# trading_config.py
+"""
+Módulo de configuração para o sistema VHALINOR I.A.
 
-config = TradingConfig()
-SYMBOL = config.symbol
-INTERVAL = config.interval
-QUANTIDADE = config.quantity
-RISK_PER_TRADE = config.risk_per_trade
+Gerencia todas as configurações de trading, perfis de risco,
+parâmetros de exchange e estratégias.
+"""
 
-# Opção 2: Perfil específico
-from trading_config import PerfilTrading
+import json
+import os
+from dataclasses import dataclass, field
+from typing import Optional, Dict, Any, List
+from pathlib import Path
+from enum import Enum
+import logging
 
-config = PerfilTrading.moderado()
-# ou
-config = PerfilTrading.scalping()
-# ou
-config = PerfilTrading.conservador()
+logger = logging.getLogger(__name__)
 
-# Opção 3: Configuração personalizada
-config = TradingConfig(
-    symbol="ETHUSDT",
-    interval="5m",
-    quantity=0.01,
-    risk_per_trade=0.02,
-    stop_loss_percent=3.0,
-    take_profit_percent=6.0
-)
+
+# ============================================================================
+# Enums e tipos
+# ============================================================================
+
+class TradingMode(Enum):
+    """Modos de operação do trading system"""
+    LIVE = "live"          # Trading real
+    TESTNET = "testnet"    # Testnet da exchange
+    BACKTEST = "backtest"  # Backtesting
+    PAPER = "paper"        # Paper trading (simulado com dados reais)
+
+
+class RiskProfile(Enum):
+    """Perfis de risco disponíveis"""
+    CONSERVADOR = "conservador"
+    MODERADO = "moderado"
+    AGRESSIVO = "agressivo"
+    SCALPING = "scalping"
+    DAYTRADE = "daytrade"
+    SWING = "swing"
+
+
+class OrderType(Enum):
+    """Tipos de ordem suportados"""
+    MARKET = "market"
+    LIMIT = "limit"
+    STOP_LOSS = "stop_loss"
+    STOP_LIMIT = "stop_limit"
+    TAKE_PROFIT = "take_profit"
+    TAKE_PROFIT_LIMIT = "take_profit_limit"
+
+
+# ============================================================================
+# Configurações específicas
+# ============================================================================
+
+@dataclass
+class ExchangeConfig:
+    """Configuração da exchange"""
+    name: str = "binance"
+    market_type: str = "futures"  # futures, spot, margin
+    api_key: Optional[str] = None
+    api_secret: Optional[str] = None
+    testnet: bool = True
+    sandbox_mode: bool = True
+    timeout: int = 30
+    rate_limit: int = 1200  # requests per minute
+    options: Dict[str, Any] = field(default_factory=dict)
+    
+    def __post_init__(self):
+        # Carregar credenciais de variáveis de ambiente se disponíveis
+        if not self.api_key:
+            self.api_key = os.getenv("BINANCE_API_KEY")
+        if not self.api_secret:
+            self.api_secret = os.getenv("BINANCE_API_SECRET")
+        
+        # Configurações padrão para futures
+        if self.market_type == "futures":
+            self.options.update({
+                "defaultType": "future",
+                "adjustForTimeDifference": True,
+                "recvWindow": 60000
+            })
+
+
+@dataclass
+class RiskConfig:
+    """Configurações de gerenciamento de risco"""
+    max_position_size_pct: float = 0.25      # 25% do capital por posição
+    max_total_risk_pct: float = 0.05         # 5% do capital total em risco simultâneo
+    risk_per_trade_pct: float = 0.01         # 1% do capital por trade
+    max_daily_loss_pct: float = 0.03         # 3% de perda máxima diária
+    max_weekly_loss_pct: float = 0.08        # 8% de perda máxima semanal
+    min_risk_reward_ratio: float = 1.5       # Mínimo 1.5:1
+    max_concurrent_trades: int = 3
+    allow_short: bool = True
+    use_trailing_stop: bool = True
+    trailing_stop_activation: float = 0.01   # 1% para ativar trailing stop
+    trailing_stop_distance: float = 0.005    # 0.5% de trailing
+    
+    def __post_init__(self):
+        # Validações
+        assert 0 < self.risk_per_trade_pct <= 0.05, "risk_per_trade_pct deve estar entre 0.01 e 0.05"
+        assert 0 < self.max_position_size_pct <= 1.0, "max_position_size_pct deve estar entre 0 e 1"
+        assert self.min_risk_reward_ratio >= 1.0, "min_risk_reward_ratio deve ser >= 1"
+
+
+@dataclass
+class StrategyConfig:
+    """Configuração de seleção e execução de estratégias"""
+    active_strategies: List[str] = field(default_factory=lambda: [
+        "breakout", "momentum", "ema_crossover"
+    ])
+    top_n_strategies: int = 2
+    strategy_weights: Dict[str, float] = field(default_factory=dict)
+    min_confidence: float = 60.0              # Confiança mínima para executar sinal
+    consensus_required: bool = False          # Precisa de consenso entre estratégias?
+    strategy_cooldown_bars: int = 3           # Barras de espera após sinal
+    
+    def __post_init__(self):
+        # Pesos padrão se não fornecidos
+        if not self.strategy_weights:
+            self.strategy_weights = {
+                "breakout": 1.0,
+                "momentum": 1.0,
+                "mean_reversion": 0.8,
+                "vwap": 0.9,
+                "ema_crossover": 1.0,
+                "scalping": 0.7
+            }
+
+
+@dataclass
+class BacktestConfig:
+    """Configuração para backtesting"""
+    start_date: str = "2024-01-01"
+    end_date: str = "2024-12-31"
+    initial_capital: float = 10000.0
+    commission: float = 0.0004  # 0.04% padrão Binance Futures
+    slippage: float = 0.0001    # 0.01% de slippage
+    use_ohlcv: bool = True
+    verbose: bool = False
+    save_trades: bool = True
+    output_dir: str = "reports/backtests"
+
+
+@dataclass
+class LoggingConfig:
+    """Configuração de logging"""
+    level: str = "INFO"
+    log_to_file: bool = True
+    log_to_console: bool = True
+    log_dir: str = "logs"
+    max_file_size_mb: int = 50
+    backup_count: int = 5
+    format: str = "%(asctime)s | %(levelname)-8s | %(name)s | %(message)s"
+    date_format: str = "%Y-%m-%d %H:%M:%S"
+
+
+# ============================================================================
+# Configuração principal
+# ============================================================================
+
+@dataclass
+class TradingConfig:
+    """
+    Configuração principal do sistema de trading.
+    
+    Attributes:
+        mode: Modo de operação (live, testnet, backtest, paper)
+        symbol: Par de trading (ex: "BTC/USDT")
+        interval: Timeframe (ex: "5m", "1h")
+        quantity: Quantidade fixa a negociar (se None, calcula baseado em risco)
+        risk_profile: Perfil de risco (conservador, moderado, agressivo, etc)
+        exchange: Configuração da exchange
+        risk: Configuração de gerenciamento de risco
+        strategy: Configuração de estratégias
+        backtest: Configuração de backtest
+        logging: Configuração de logging
+        custom_params: Parâmetros extras customizáveis
+    """
+    # Modo e símbolos
+    mode: TradingMode = TradingMode.PAPER
+    symbol: str = "BTC/USDT"
+    interval: str = "5m"
+    quantity: Optional[float] = None  # Se None, calculado automaticamente
+    
+    # Perfil de risco (simplificado para acesso rápido)
+    risk_profile: RiskProfile = RiskProfile.MODERADO
+    
+    # Subconfigurações
+    exchange: ExchangeConfig = field(default_factory=ExchangeConfig)
+    risk: RiskConfig = field(default_factory=RiskConfig)
+    strategy: StrategyConfig = field(default_factory=StrategyConfig)
+    backtest: BacktestConfig = field(default_factory=BacktestConfig)
+    logging: LoggingConfig = field(default_factory=LoggingConfig)
+    
+    # Parâmetros customizáveis
+    custom_params: Dict[str, Any] = field(default_factory=dict)
+    
+    def __post_init__(self):
+        """Valida e aplica configurações baseadas no perfil de risco."""
+        self._apply_risk_profile()
+        self._validate()
+    
+    def _apply_risk_profile(self):
+        """Aplica os parâmetros específicos do perfil de risco escolhido."""
+        profiles = {
+            RiskProfile.CONSERVADOR: {
+                "risk_per_trade_pct": 0.005,      # 0.5%
+                "max_position_size_pct": 0.15,
+                "max_concurrent_trades": 2,
+                "min_risk_reward_ratio": 2.0,
+                "allow_short": False,
+                "strategy_active": ["ema_crossover", "vwap"]
+            },
+            RiskProfile.MODERADO: {
+                "risk_per_trade_pct": 0.01,       # 1%
+                "max_position_size_pct": 0.25,
+                "max_concurrent_trades": 3,
+                "min_risk_reward_ratio": 1.5,
+                "allow_short": True,
+                "strategy_active": ["breakout", "momentum", "ema_crossover"]
+            },
+            RiskProfile.AGRESSIVO: {
+                "risk_per_trade_pct": 0.02,       # 2%
+                "max_position_size_pct": 0.40,
+                "max_concurrent_trades": 5,
+                "min_risk_reward_ratio": 1.2,
+                "allow_short": True,
+                "strategy_active": ["breakout", "momentum", "scalping"]
+            },
+            RiskProfile.SCALPING: {
+                "risk_per_trade_pct": 0.005,
+                "max_position_size_pct": 0.20,
+                "max_concurrent_trades": 4,
+                "min_risk_reward_ratio": 1.0,
+                "allow_short": True,
+                "use_trailing_stop": False,
+                "strategy_active": ["scalping", "vwap"]
+            },
+            RiskProfile.DAYTRADE: {
+                "risk_per_trade_pct": 0.01,
+                "max_position_size_pct": 0.30,
+                "max_concurrent_trades": 3,
+                "min_risk_reward_ratio": 1.5,
+                "allow_short": True,
+                "strategy_active": ["momentum", "breakout", "ema_crossover"]
+            },
+            RiskProfile.SWING: {
+                "risk_per_trade_pct": 0.015,
+                "max_position_size_pct": 0.35,
+                "max_concurrent_trades": 2,
+                "min_risk_reward_ratio": 2.5,
+                "allow_short": True,
+                "strategy_active": ["ema_crossover", "mean_reversion"]
+            }
+        }
+        
+        if self.risk_profile in profiles:
+            profile = profiles[self.risk_profile]
+            # Atualiza RiskConfig
+            for key, value in profile.items():
+                if key == "strategy_active":
+                    self.strategy.active_strategies = value
+                elif hasattr(self.risk, key):
+                    setattr(self.risk, key, value)
+    
+    def _validate(self):
+        """Valida todas as configurações."""
+        # Validação de símbolo
+        if not self.symbol or "/" not in self.symbol:
+            raise ValueError(f"Símbolo inválido: {self.symbol}. Use formato 'BASE/QUOTE'")
+        
+        # Validação de timeframe
+        valid_intervals = ["1m", "3m", "5m", "15m", "30m", "1h", "2h", "4h", "6h", "8h", "12h", "1d"]
+        if self.interval not in valid_intervals:
+            raise ValueError(f"Intervalo inválido: {self.interval}. Use um de: {valid_intervals}")
+        
+        # Validação de quantidade
+        if self.quantity is not None and self.quantity <= 0:
+            raise ValueError(f"Quantidade deve ser positiva: {self.quantity}")
+        
+        # Validação de modo vs API keys
+        if self.mode == TradingMode.LIVE:
+            if not self.exchange.api_key or not self.exchange.api_secret:
+                raise ValueError("API keys são obrigatórias para modo LIVE")
+            if self.exchange.testnet:
+                logger.warning("Modo LIVE com testnet=True - alterando para False")
+                self.exchange.testnet = False
+    
+    # ========================================================================
+    # Propriedades de conveniência
+    # ========================================================================
+    
+    @property
+    def symbol_base(self) -> str:
+        """Retorna a moeda base (ex: BTC em BTC/USDT)"""
+        return self.symbol.split('/')[0]
+    
+    @property
+    def symbol_quote(self) -> str:
+        """Retorna a moeda de cotação (ex: USDT em BTC/USDT)"""
+        return self.symbol.split('/')[1]
+    
+    @property
+    def is_live(self) -> bool:
+        return self.mode == TradingMode.LIVE
+    
+    @property
+    def is_testnet(self) -> bool:
+        return self.mode == TradingMode.TESTNET
+    
+    @property
+    def is_backtest(self) -> bool:
+        return self.mode == TradingMode.BACKTEST
+    
+    @property
+    def is_paper(self) -> bool:
+        return self.mode == TradingMode.PAPER
+    
+    # ========================================================================
+    # Métodos de fábrica (perfis predefinidos)
+    # ========================================================================
+    
+    @classmethod
+    def conservador(cls, symbol: str = "BTC/USDT") -> "TradingConfig":
+        """Perfil conservador - baixo risco, posições menores."""
+        return cls(
+            mode=TradingMode.PAPER,
+            symbol=symbol,
+            interval="1h",
+            risk_profile=RiskProfile.CONSERVADOR
+        )
+    
+    @classmethod
+    def moderado(cls, symbol: str = "BTC/USDT") -> "TradingConfig":
+        """Perfil moderado - equilíbrio entre risco e retorno."""
+        return cls(
+            mode=TradingMode.PAPER,
+            symbol=symbol,
+            interval="1h",
+            risk_profile=RiskProfile.MODERADO
+        )
+    
+    @classmethod
+    def agressivo(cls, symbol: str = "BTC/USDT") -> "TradingConfig":
+        """Perfil agressivo - maior risco, maior potencial de retorno."""
+        return cls(
+            mode=TradingMode.PAPER,
+            symbol=symbol,
+            interval="15m",
+            risk_profile=RiskProfile.AGRESSIVO
+        )
+    
+    @classmethod
+    def scalping(cls, symbol: str = "ETH/USDT") -> "TradingConfig":
+        """Perfil scalping - trades rápidos em timeframes baixos."""
+        return cls(
+            mode=TradingMode.PAPER,
+            symbol=symbol,
+            interval="1m",
+            risk_profile=RiskProfile.SCALPING
+        )
+    
+    @classmethod
+    def daytrade(cls, symbol: str = "BTC/USDT") -> "TradingConfig":
+        """Perfil daytrade - operações intradiárias."""
+        return cls(
+            mode=TradingMode.PAPER,
+            symbol=symbol,
+            interval="15m",
+            risk_profile=RiskProfile.DAYTRADE
+        )
+    
+    @classmethod
+    def swing(cls, symbol: str = "BTC/USDT") -> "TradingConfig":
+        """Perfil swing trade - posições de alguns dias."""
+        return cls(
+            mode=TradingMode.PAPER,
+            symbol=symbol,
+            interval="4h",
+            risk_profile=RiskProfile.SWING
+        )
+    
+    @classmethod
+    def live(cls, symbol: str = "BTC/USDT", api_key: str = None, api_secret: str = None) -> "TradingConfig":
+        """Configuração para trading real (LIVE)."""
+        config = cls.moderado(symbol)
+        config.mode = TradingMode.LIVE
+        config.exchange.testnet = False
+        if api_key:
+            config.exchange.api_key = api_key
+        if api_secret:
+            config.exchange.api_secret = api_secret
+        return config
+    
+    @classmethod
+    def from_json(cls, filepath: str) -> "TradingConfig":
+        """Carrega configuração de um arquivo JSON."""
+        path = Path(filepath)
+        if not path.exists():
+            raise FileNotFoundError(f"Arquivo não encontrado: {filepath}")
+        
+        with open(path, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+        
+        # Converte modo e perfil de risco de string para enum
+        if "mode" in data:
+            data["mode"] = TradingMode(data["mode"])
+        if "risk_profile" in data:
+            data["risk_profile"] = RiskProfile(data["risk_profile"])
+        
+        # Converte subconfigurações
+        if "exchange" in data and isinstance(data["exchange"], dict):
+            data["exchange"] = ExchangeConfig(**data["exchange"])
+        if "risk" in data and isinstance(data["risk"], dict):
+            data["risk"] = RiskConfig(**data["risk"])
+        if "strategy" in data and isinstance(data["strategy"], dict):
+            data["strategy"] = StrategyConfig(**data["strategy"])
+        if "backtest" in data and isinstance(data["backtest"], dict):
+            data["backtest"] = BacktestConfig(**data["backtest"])
+        if "logging" in data and isinstance(data["logging"], dict):
+            data["logging"] = LoggingConfig(**data["logging"])
+        
+        return cls(**data)
+    
+    def to_json(self, filepath: str):
+        """Salva configuração em arquivo JSON."""
+        data = {
+            "mode": self.mode.value,
+            "symbol": self.symbol,
+            "interval": self.interval,
+            "quantity": self.quantity,
+            "risk_profile": self.risk_profile.value,
+            "exchange": self.exchange.__dict__,
+            "risk": self.risk.__dict__,
+            "strategy": self.strategy.__dict__,
+            "backtest": self.backtest.__dict__,
+            "logging": self.logging.__dict__,
+            "custom_params": self.custom_params
+        }
+        
+        # Remover campos None para limpeza
+        if data["quantity"] is None:
+            del data["quantity"]
+        
+        path = Path(filepath)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with open(path, 'w', encoding='utf-8') as f:
+            json.dump(data, f, indent=2, ensure_ascii=False)
+        
+        logger.info(f"Configuração salva em {filepath}")
+    
+    def update_from_dict(self, updates: Dict[str, Any]):
+        """Atualiza configuração a partir de um dicionário."""
+        for key, value in updates.items():
+            if hasattr(self, key):
+                if isinstance(value, dict) and hasattr(getattr(self, key), '__dict__'):
+                    # Atualiza subconfiguração recursivamente
+                    sub_config = getattr(self, key)
+                    for sub_key, sub_value in value.items():
+                        if hasattr(sub_config, sub_key):
+                            setattr(sub_config, sub_key, sub_value)
+                else:
+                    setattr(self, key, value)
+            else:
+                self.custom_params[key] = value
+        self._apply_risk_profile()
+        self._validate()
+    
+    def __repr__(self) -> str:
+        return f"TradingConfig(mode={self.mode.value}, symbol={self.symbol}, interval={self.interval}, profile={self.risk_profile.value})"
+
+
+# ============================================================================
+# Interface simplificada para compatibilidade com código legado
+# ============================================================================
+
+class PerfilTrading:
+    """Wrapper estático para acesso aos perfis predefinidos (compatível com código antigo)."""
+    
+    @staticmethod
+    def conservador(symbol: str = "BTC/USDT") -> TradingConfig:
+        return TradingConfig.conservador(symbol)
+    
+    @staticmethod
+    def moderado(symbol: str = "BTC/USDT") -> TradingConfig:
+        return TradingConfig.moderado(symbol)
+    
+    @staticmethod
+    def agressivo(symbol: str = "BTC/USDT") -> TradingConfig:
+        return TradingConfig.agressivo(symbol)
+    
+    @staticmethod
+    def scalping(symbol: str = "ETH/USDT") -> TradingConfig:
+        return TradingConfig.scalping(symbol)
+    
+    @staticmethod
+    def daytrade(symbol: str = "BTC/USDT") -> TradingConfig:
+        return TradingConfig.daytrade(symbol)
+    
+    @staticmethod
+    def swing(symbol: str = "BTC/USDT") -> TradingConfig:
+        return TradingConfig.swing(symbol)
+
+
+# ============================================================================
+# Configuração global (singleton opcional)
+# ============================================================================
+
+_global_config: Optional[TradingConfig] = None
+
+
+def get_global_config() -> TradingConfig:
+    """Retorna a configuração global (cria padrão se não existir)."""
+    global _global_config
+    if _global_config is None:
+        _global_config = TradingConfig.moderado()
+    return _global_config
+
+
+def set_global_config(config: TradingConfig):
+    """Define a configuração global."""
+    global _global_config
+    _global_config = config
+
+
+def load_global_config(filepath: str):
+    """Carrega configuração global de arquivo JSON."""
+    global _global_config
+    _global_config = TradingConfig.from_json(filepath)
+
+
+# ============================================================================
+# Exemplo de uso e teste
+# ============================================================================
+
+if __name__ == "__main__":
+    # Teste dos perfis
+    print("=== Perfil Conservador ===")
+    cfg1 = PerfilTrading.conservador()
+    print(cfg1)
+    print(f"  Risco por trade: {cfg1.risk.risk_per_trade_pct*100:.2f}%")
+    print(f"  Estratégias ativas: {cfg1.strategy.active_strategies}")
+    
+    print("\n=== Perfil Scalping ===")
+    cfg2 = PerfilTrading.scalping()
+    print(cfg2)
+    
+    print("\n=== Configuração customizada ===")
+    cfg3 = TradingConfig(
+        symbol="ETHUSDT",
+        interval="5m",
+        quantity=0.01,
+        risk_per_trade=0.02,  # Atenção: na dataclass é risk.risk_per_trade_pct
+        stop_loss_percent=3.0,  # Isso irá para custom_params
+        take_profit_percent=6.0
+    )
+    print(cfg3)
+    print(f"  custom_params: {cfg3.custom_params}")
+    
+    # Salvar e carregar JSON
+    cfg3.to_json("config_example.json")
+    cfg4 = TradingConfig.from_json("config_example.json")
+    print(f"\nConfiguração carregada: {cfg4}")
+    
+    # Acessar propriedades convenientes
+    print(f"\nBase: {cfg4.symbol_base}, Quote: {cfg4.symbol_quote}")
+    print(f"Modo LIVE? {cfg4.is_live}")
