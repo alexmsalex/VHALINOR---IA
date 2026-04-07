@@ -7,109 +7,158 @@ Este módulo implementa:
 - Aprendizado Contínuo: Adaptação em tempo real baseada em fluxo de dados
 - Aprendizado Evolucional: Otimização através de algoritmos genéticos e neuroevolução
 
-Versão: 2.0.0
+Versão: 2.0.1
 Autor: Sistema VHALINOR
-Data: Fevereiro 2026
+Data: Março 2026
 """
 
 import sys
 import logging
 from pathlib import Path
-from typing import Optional, Dict, Any, List, Union
-import importlib.util
+from typing import Optional, Dict, Any, Union, Callable, TypeVar, cast
+from functools import wraps
+import time
+import importlib
 
 # Configuração de logging específica para o módulo
 _logger = logging.getLogger(__name__)
 _logger.setLevel(logging.INFO)
+_logger.addHandler(logging.NullHandler())  # Evita warning "No handlers found"
 
-# Handler para o logger se não existir
-if not _logger.handlers:
-    handler = logging.StreamHandler()
-    handler.setFormatter(logging.Formatter(
+# Adiciona um handler console apenas se não existir nenhum handler
+if not _logger.handlers or isinstance(_logger.handlers[0], logging.NullHandler):
+    console_handler = logging.StreamHandler()
+    console_handler.setFormatter(logging.Formatter(
         '%(asctime)s | %(name)-20s | %(levelname)-7s | %(message)s',
         datefmt='%H:%M:%S'
     ))
-    _logger.addHandler(handler)
+    _logger.addHandler(console_handler)
 
 # Versão do módulo
-__version__ = "2.0.0"
+__version__ = "2.0.1"
 __author__ = "Sistema VHALINOR"
 __license__ = "Proprietary - VHALINOR Research"
 __copyright__ = "Copyright 2026, VHALINOR Systems"
 
-# Verificação de dependências
+# Dependências requeridas (nome -> versão mínima)
 _REQUIRED_PACKAGES = {
     'numpy': '1.21.0',
     'scikit-learn': '1.0.0',
     'pandas': '1.3.0',
-    'deap': '1.3.1',  # Para algoritmos genéticos
+    'deap': '1.3.1',
 }
 
+# Flags de disponibilidade dos submódulos
+_APRENDIZADO_CONTINUO_AVAILABLE = False
+_APRENDIZADO_EVOLUCIONAL_AVAILABLE = False
+AprendizadoContinuo = None
+AprendizadoEvolucional = None
 
-def _check_dependencies():
-    """Verifica dependências necessárias."""
-    missing_packages = []
-    outdated_packages = []
-    
-    for package, min_version in _REQUIRED_PACKAGES.items():
-        try:
-            module = importlib.import_module(package)
-            # Tenta obter a versão
-            if hasattr(module, '__version__'):
-                version = module.__version__
-                # Comparação básica de versão
-                from packaging import version as packaging_version
-                if packaging_version.parse(version) < packaging_version.parse(min_version):
-                    outdated_packages.append(f"{package} ({version} < {min_version})")
-            elif hasattr(module, 'version'):
-                version = module.version
-                from packaging import version as packaging_version
-                if packaging_version.parse(version) < packaging_version.parse(min_version):
-                    outdated_packages.append(f"{package} ({version} < {min_version})")
-        except ImportError:
-            missing_packages.append(package)
-    
-    if missing_packages or outdated_packages:
-        warning_msg = "Dependências do módulo de aprendizado:\n"
-        if missing_packages:
-            warning_msg += f"  Faltando: {', '.join(missing_packages)}\n"
-        if outdated_packages:
-            warning_msg += f"  Desatualizadas: {', '.join(outdated_packages)}\n"
-        warning_msg += "  Instale com: pip install numpy scikit-learn pandas deap"
-        _logger.warning(warning_msg)
+
+def _version_to_tuple(version_str: str) -> tuple:
+    """Converte string de versão para tupla de inteiros para comparação."""
+    import re
+    # Remove sufixos como 'dev', 'rc', etc. e extrai apenas números
+    clean = re.sub(r'([0-9]+(?:\\.[0-9]+)*).*', r'\\1', version_str)
+    return tuple(int(x) for x in clean.split('.') if x.isdigit())
+
+
+def _check_package_version(package_name: str, min_version: str) -> bool:
+    """Verifica se um pacote está instalado e tem versão >= mínima."""
+    try:
+        module = importlib.import_module(package_name)
+        # Tenta obter a versão de diferentes atributos comuns
+        version_str = getattr(module, '__version__', None)
+        if version_str is None:
+            version_str = getattr(module, 'version', None)
+        if version_str is None:
+            # Para alguns pacotes como sklearn
+            if package_name == 'scikit-learn':
+                try:
+                    from sklearn import __version__ as sk_version
+                    version_str = sk_version
+                except ImportError:
+                    pass
+        if version_str:
+            return _version_to_tuple(version_str) >= _version_to_tuple(min_version)
+        else:
+            # Se não consegue determinar versão, assume que está ok
+            _logger.warning(f"Não foi possível determinar a versão de {package_name}, assumindo compatível.")
+            return True
+    except ImportError:
         return False
-    return True
 
 
-# Executa verificação de dependências
-_dependencies_ok = _check_dependencies()
-
-# Importações condicionais baseadas em disponibilidade
-try:
-    from .continuo import AprendizadoContinuo
-    _APRENDIZADO_CONTINUO_AVAILABLE = True
-except ImportError as e:
-    _logger.error(f"Falha ao importar AprendizadoContinuo: {e}")
-    AprendizadoContinuo = None
-    _APRENDIZADO_CONTINUO_AVAILABLE = False
-
-try:
-    from .evolucional import AprendizadoEvolucional
-    _APRENDIZADO_EVOLUCIONAL_AVAILABLE = True
-except ImportError as e:
-    _logger.error(f"Falha ao importar AprendizadoEvolucional: {e}")
-    AprendizadoEvolucional = None
-    _APRENDIZADO_EVOLUCIONAL_AVAILABLE = False
-
-
-# Classes de fábrica e utilitárias
-class SistemaAprendizadoFactory:
-    """Fábrica para criação de sistemas de aprendizado."""
+def _check_dependencies() -> Dict[str, bool]:
+    """
+    Verifica todas as dependências necessárias.
     
-    @staticmethod
-    def criar_sistema(tipo: str, config: Optional[Dict[str, Any]]=None) -> Union['AprendizadoContinuo', 'AprendizadoEvolucional']:
+    Returns:
+        Dicionário com status de cada pacote (True se ok, False se faltando/desatualizado)
+    """
+    status = {}
+    for package, min_version in _REQUIRED_PACKAGES.items():
+        ok = _check_package_version(package, min_version)
+        status[package] = ok
+        if not ok:
+            _logger.warning(
+                f"Dependência {package} (>= {min_version}) não encontrada ou desatualizada. "
+                f"Funcionalidades de aprendizado podem ser limitadas."
+            )
+    return status
+
+
+def _try_import_submodules():
+    """Tenta importar os submódulos de aprendizado contínuo e evolucional."""
+    global AprendizadoContinuo, _APRENDIZADO_CONTINUO_AVAILABLE
+    global AprendizadoEvolucional, _APRENDIZADO_EVOLUCIONAL_AVAILABLE
+    
+    try:
+        from . import continuo
+        AprendizadoContinuo = continuo.AprendizadoContinuo
+        _APRENDIZADO_CONTINUO_AVAILABLE = True
+    except ImportError as e:
+        _logger.error(f"Falha ao importar módulo 'continuo': {e}. "
+                      "Aprendizado contínuo indisponível.")
+    
+    try:
+        from . import evolucional
+        AprendizadoEvolucional = evolucional.AprendizadoEvolucional
+        _APRENDIZADO_EVOLUCIONAL_AVAILABLE = True
+    except ImportError as e:
+        _logger.error(f"Falha ao importar módulo 'evolucional': {e}. "
+                      "Aprendizado evolucional indisponível.")
+
+
+# Verifica dependências e submódulos (executado na importação)
+_dependencies_status = _check_dependencies()
+_try_import_submodules()
+
+
+# Tipo para os sistemas de aprendizado
+SistemaTipo = Union['AprendizadoContinuo', 'AprendizadoEvolucional']
+
+
+class SistemaAprendizadoFactory:
+    """Fábrica para criação de sistemas de aprendizado (padrão Singleton opcional)."""
+    
+    _instances: Dict[str, SistemaTipo] = {}
+    _use_singleton = False
+    
+    @classmethod
+    def configure(cls, use_singleton: bool = False) -> None:
         """
-        Cria um sistema de aprendizado baseado no tipo especificado.
+        Configura o comportamento da fábrica.
+        
+        Args:
+            use_singleton: Se True, reutiliza instâncias já criadas para o mesmo tipo/config.
+        """
+        cls._use_singleton = use_singleton
+    
+    @classmethod
+    def criar_sistema(cls, tipo: str, config: Optional[Dict[str, Any]] = None) -> SistemaTipo:
+        """
+        Cria (ou obtém) um sistema de aprendizado baseado no tipo especificado.
         
         Args:
             tipo: 'continuo' ou 'evolucional'
@@ -123,23 +172,35 @@ class SistemaAprendizadoFactory:
             ImportError: Se o módulo necessário não estiver disponível
         """
         config = config or {}
+        tipo = tipo.lower()
         
-        if tipo.lower() == 'continuo':
+        if tipo == 'continuo':
             if not _APRENDIZADO_CONTINUO_AVAILABLE:
-                raise ImportError("Módulo AprendizadoContinuo não disponível")
-            return AprendizadoContinuo(**config)
+                raise ImportError("Módulo AprendizadoContinuo não disponível. Verifique as dependências.")
+            if cls._use_singleton and 'continuo' in cls._instances:
+                return cls._instances['continuo']
+            instance = AprendizadoContinuo(**config)  # type: ignore
+            if cls._use_singleton:
+                cls._instances['continuo'] = instance
+            return instance
         
-        elif tipo.lower() == 'evolucional':
+        elif tipo == 'evolucional':
             if not _APRENDIZADO_EVOLUCIONAL_AVAILABLE:
-                raise ImportError("Módulo AprendizadoEvolucional não disponível")
-            return AprendizadoEvolucional(**config)
+                raise ImportError("Módulo AprendizadoEvolucional não disponível. Verifique as dependências.")
+            if cls._use_singleton and 'evolucional' in cls._instances:
+                return cls._instances['evolucional']
+            instance = AprendizadoEvolucional(**config)  # type: ignore
+            if cls._use_singleton:
+                cls._instances['evolucional'] = instance
+            return instance
         
         else:
             raise ValueError(f"Tipo de sistema desconhecido: {tipo}. Use 'continuo' ou 'evolucional'")
     
-    @staticmethod
-    def criar_sistema_hibrido(config_continuo: Optional[Dict]=None,
-                              config_evolucional: Optional[Dict]=None) -> 'SistemaAprendizadoHibrido':
+    @classmethod
+    def criar_sistema_hibrido(cls,
+                              config_continuo: Optional[Dict] = None,
+                              config_evolucional: Optional[Dict] = None) -> 'SistemaAprendizadoHibrido':
         """
         Cria um sistema híbrido que combina aprendizado contínuo e evolucional.
         
@@ -150,7 +211,6 @@ class SistemaAprendizadoFactory:
         Returns:
             Sistema híbrido de aprendizado
         """
-        from .hibrido import SistemaAprendizadoHibrido
         return SistemaAprendizadoHibrido(
             config_continuo=config_continuo,
             config_evolucional=config_evolucional
@@ -158,10 +218,14 @@ class SistemaAprendizadoFactory:
 
 
 class SistemaAprendizadoHibrido:
-    """Sistema híbrido que combina aprendizado contínuo e evolucional."""
+    """
+    Sistema híbrido que combina aprendizado contínuo e evolucional.
+    Gerencia a interação entre os dois paradigmas.
+    """
     
-    def __init__(self, config_continuo: Optional[Dict]=None,
-                 config_evolucional: Optional[Dict]=None):
+    def __init__(self,
+                 config_continuo: Optional[Dict] = None,
+                 config_evolucional: Optional[Dict] = None):
         """
         Inicializa o sistema híbrido.
         
@@ -172,46 +236,65 @@ class SistemaAprendizadoHibrido:
         self.continuo = SistemaAprendizadoFactory.criar_sistema('continuo', config_continuo)
         self.evolucional = SistemaAprendizadoFactory.criar_sistema('evolucional', config_evolucional)
         self._logger = logging.getLogger(f"{__name__}.Hibrido")
+        self._logger.info("Sistema híbrido inicializado com sucesso.")
     
-    def processar(self, dados: Any, modo: str='ambos') -> Dict[str, Any]:
+    def processar(self, dados: Any, modo: str = 'ambos') -> Dict[str, Any]:
         """
         Processa dados usando os sistemas de aprendizado.
         
         Args:
-            dados: Dados a serem processados
+            dados: Dados a serem processados (formato depende dos subsistemas)
             modo: 'continuo', 'evolucional' ou 'ambos'
             
         Returns:
-            Resultados do processamento
+            Dicionário com resultados do processamento.
+            Exemplo: {'continuo': {...}, 'evolucional': {...}}
         """
         resultados = {}
         
-        if modo in ['continuo', 'ambos']:
-            resultados['continuo'] = self.continuo.aprender(dados)
+        if modo in ('continuo', 'ambos'):
+            try:
+                resultados['continuo'] = self.continuo.aprender(dados)
+            except Exception as e:
+                self._logger.error(f"Erro no aprendizado contínuo: {e}")
+                resultados['continuo'] = {'erro': str(e)}
         
-        if modo in ['evolucional', 'ambos']:
-            resultados['evolucional'] = self.evolucional.evoluir(dados)
+        if modo in ('evolucional', 'ambos'):
+            try:
+                resultados['evolucional'] = self.evolucional.evoluir(dados)
+            except Exception as e:
+                self._logger.error(f"Erro no aprendizado evolucional: {e}")
+                resultados['evolucional'] = {'erro': str(e)}
         
         return resultados
+    
+    def get_estatisticas(self) -> Dict[str, Any]:
+        """Retorna estatísticas consolidadas dos subsistemas."""
+        stats = {}
+        if hasattr(self.continuo, 'get_estatisticas'):
+            stats['continuo'] = self.continuo.get_estatisticas()
+        if hasattr(self.evolucional, 'get_estatisticas'):
+            stats['evolucional'] = self.evolucional.get_estatisticas()
+        return stats
 
 
 # Utilitários do módulo
 def verificar_configuracao() -> Dict[str, Any]:
     """
-    Verifica a configuração do módulo de aprendizado.
+    Verifica a configuração completa do módulo de aprendizado.
     
     Returns:
-        Dicionário com status do módulo
+        Dicionário com status detalhado do módulo
     """
     status = {
         'versao': __version__,
-        'dependencias_ok': _dependencies_ok,
+        'dependencias': _dependencies_status,
         'modulos_disponiveis': {
             'AprendizadoContinuo': _APRENDIZADO_CONTINUO_AVAILABLE,
             'AprendizadoEvolucional': _APRENDIZADO_EVOLUCIONAL_AVAILABLE,
         },
-        'pacotes_requeridos': _REQUIRED_PACKAGES,
         'caminho_modulo': str(Path(__file__).parent.absolute()),
+        'factory_singleton': SistemaAprendizadoFactory._use_singleton,
     }
     
     if _APRENDIZADO_CONTINUO_AVAILABLE and AprendizadoContinuo is not None:
@@ -223,15 +306,15 @@ def verificar_configuracao() -> Dict[str, Any]:
     return status
 
 
-def inicializar_sistema_aprendizado(config: Optional[Dict[str, Any]]=None) -> Dict[str, Any]:
+def inicializar_sistema_aprendizado(config: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     """
     Inicializa todos os sistemas de aprendizado disponíveis.
     
     Args:
-        config: Configuração para os sistemas
+        config: Dicionário de configuração com chaves 'continuo', 'evolucional', etc.
         
     Returns:
-        Dicionário com sistemas inicializados
+        Dicionário com os sistemas inicializados.
     """
     config = config or {}
     
@@ -245,7 +328,6 @@ def inicializar_sistema_aprendizado(config: Optional[Dict[str, Any]]=None) -> Di
         sistemas['evolucional'] = SistemaAprendizadoFactory.criar_sistema('evolucional', config.get('evolucional'))
         _logger.info("Sistema de Aprendizado Evolucional inicializado")
     
-    # Criar sistema híbrido se ambos estiverem disponíveis
     if len(sistemas) == 2:
         sistemas['hibrido'] = SistemaAprendizadoFactory.criar_sistema_hibrido(
             config_continuo=config.get('continuo'),
@@ -257,52 +339,49 @@ def inicializar_sistema_aprendizado(config: Optional[Dict[str, Any]]=None) -> Di
 
 
 # Decoradores utilitários
-def monitorar_desempenho(func):
+F = TypeVar('F', bound=Callable[..., Any])
+
+def monitorar_desempenho(func: F) -> F:
     """
-    Decorador para monitorar desempenho de funções de aprendizado.
+    Decorador para monitorar tempo de execução de funções de aprendizado.
+    Adiciona a chave '_tempo_execucao' ao dicionário de retorno.
     """
-    import time
-    from functools import wraps
-    
     @wraps(func)
     def wrapper(*args, **kwargs):
-        inicio = time.time()
+        inicio = time.perf_counter()
         resultado = func(*args, **kwargs)
-        duracao = time.time() - inicio
+        duracao = time.perf_counter() - inicio
         
-        # Log de desempenho
         _logger.debug(f"Função {func.__name__} executada em {duracao:.4f} segundos")
         
-        # Adiciona informação de tempo ao resultado se for dicionário
         if isinstance(resultado, dict):
             resultado['_tempo_execucao'] = duracao
-        
         return resultado
-    
-    return wrapper
+    return cast(F, wrapper)
 
 
-def validar_dados_aprendizado(func):
+def validar_dados_aprendizado(func: F) -> F:
     """
-    Decorador para validar dados de entrada para funções de aprendizado.
+    Decorador para validar dados de entrada (primeiro argumento posicional)
+    para funções de aprendizado.
     """
-    from functools import wraps
-    
     @wraps(func)
-    def wrapper(dados, *args, **kwargs):
-        # Validações básicas
+    def wrapper(*args, **kwargs):
+        if not args:
+            raise ValueError("Nenhum argumento fornecido para validação.")
+        
+        dados = args[0]
         if dados is None:
             raise ValueError("Dados não podem ser None")
         
         if isinstance(dados, (list, tuple)) and len(dados) == 0:
-            raise ValueError("Dados não podem estar vazios")
+            raise ValueError("Lista/tupla de dados não pode estar vazia")
         
-        if hasattr(dados, '__len__') and len(dados) == 0:
-            raise ValueError("Dados não podem estar vazios")
+        if hasattr(dados, '__len__') and len(dados) == 0 and not isinstance(dados, (str, bytes)):
+            raise ValueError("Container de dados não pode estar vazio")
         
-        return func(dados, *args, **kwargs)
-    
-    return wrapper
+        return func(*args, **kwargs)
+    return cast(F, wrapper)
 
 
 # Constantes do módulo
@@ -311,9 +390,9 @@ class ModosAprendizado:
     CONTÍNUO = 'continuo'
     EVOLUCIONAL = 'evolucional'
     HÍBRIDO = 'hibrido'
-    BATCH = 'batch'  # Processamento em lote
-    ONLINE = 'online'  # Processamento online/streaming
-    REFORÇO = 'reforco'  # Aprendizado por reforço
+    BATCH = 'batch'
+    ONLINE = 'online'
+    REFORÇO = 'reforco'
 
 
 class MetricasAvaliacao:
@@ -356,19 +435,21 @@ __all__ = [
     '__license__',
 ]
 
-# Mensagem de inicialização
+# Mensagem de inicialização (apenas se não for execução direta)
 if __name__ != "__main__":
-    if _dependencies_ok and (_APRENDIZADO_CONTINUO_AVAILABLE or _APRENDIZADO_EVOLUCIONAL_AVAILABLE):
-        _logger.info(
-            f"Módulo de Aprendizado Avançado v{__version__} carregado. "
-            f"Contínuo: {'✓' if _APRENDIZADO_CONTINUO_AVAILABLE else '✗'}, "
-            f"Evolucional: {'✓' if _APRENDIZADO_EVOLUCIONAL_AVAILABLE else '✗'}"
-        )
+    disponiveis = []
+    if _APRENDIZADO_CONTINUO_AVAILABLE:
+        disponiveis.append("Contínuo")
+    if _APRENDIZADO_EVOLUCIONAL_AVAILABLE:
+        disponiveis.append("Evolucional")
+    
+    if disponiveis:
+        _logger.info(f"Módulo de Aprendizado Avançado v{__version__} carregado. "
+                     f"Subsistemas ativos: {', '.join(disponiveis)}")
     else:
-        _logger.warning(
-            f"Módulo de Aprendizado carregado com limitações. "
-            f"Dependências: {'✓' if _dependencies_ok else '✗'}"
-        )
+        _logger.warning(f"Módulo de Aprendizado v{__version__} carregado sem subsistemas ativos. "
+                        "Verifique dependências e submódulos.")
+
 
 # Ponto de entrada para testes
 if __name__ == "__main__":
